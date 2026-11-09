@@ -1,0 +1,39 @@
+- name: Configure the declared human accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: "{{ item.groups }}"
+    append: true
+    shell: "{{ item.shell }}"
+    password: "{{ item.password }}"
+  loop: "{{ guest_plan.users }}"
+  no_log: true
+
+- name: Authorize the human public keys
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ item.authorized_keys | join('\n') }}"
+  loop: "{{ guest_plan.users }}"
+  no_log: true
+
+- name: Configure the service accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    system: true
+    shell: "{{ item.shell }}"
+    create_home: false
+  loop: "{{ guest_plan.system_accounts | default([]) }}"
+
+- name: Disable root SSH after the successful admin connection
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ item.key }}"
+    mode: "{{ guest_plan.file_mode }}"
+    validate: /usr/sbin/sshd -t -f %s
+  loop: "{{ guest_plan.after_admin_verified_files | dict2items }}"
+  register: guest_ssh_configuration
+
+- name: Reload SSH when access policy changes
+  ansible.builtin.service:
+    name: "{{ guest_plan.ssh_service }}"
+    state: reloaded
+  when: guest_ssh_configuration.changed

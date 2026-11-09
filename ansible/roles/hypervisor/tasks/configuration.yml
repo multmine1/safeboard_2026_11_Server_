@@ -1,0 +1,15 @@
+- name: Persist the declared host files
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ item.key }}"
+    mode: "{{ hypervisor_file_mode }}"
+  loop: "{{ hypervisor_files | dict2items }}"
+
+- name: Keep forwarding disabled on the physical hypervisor
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: "{{ hypervisor_sysctl_file }}"
+    sysctl_set: true
+    reload: false
+  loop: "{{ hypervisor_sysctl | dict2items }}"

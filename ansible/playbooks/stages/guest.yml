@@ -1,0 +1,86 @@
+- name: Read this guest's encrypted identity
+  ansible.builtin.set_fact:
+    guest_admin: "{{ vault_store.guests[guest_id] }}"
+  no_log: true
+
+- name: Establish administrative access
+  block:
+    - name: Connect with the individual admin key
+      ansible.builtin.wait_for_connection:
+        timeout: 5
+        connect_timeout: 2
+      delegate_to: "{{ guest_id }}"
+      vars:
+        ansible_user: "{{ guest.access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].guest_admin.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].guest_admin.key_passphrase }}"
+  rescue:
+    - name: Bootstrap the individual administrator
+      delegate_to: "{{ guest_id }}"
+      vars:
+        ansible_user: "{{ guest.access.bootstrap_user }}"
+        ansible_private_key: "{{ vault_store.vmctl_private_key }}"
+        ansible_private_key_passphrase: "{{ vault_store.vmctl_key_passphrase }}"
+      block:
+        - name: Wait for cloud-init SSH access
+          ansible.builtin.wait_for_connection:
+            timeout: 180
+
+        - name: Create the administrator with password-protected sudo
+          ansible.builtin.user:
+            name: "{{ guest.access.admin_user }}"
+            groups: "{{ guest.access.admin.groups }}"
+            shell: "{{ guest.access.admin.shell }}"
+            password: "{{ hostvars['localhost'].guest_admin.password_hash }}"
+          no_log: true
+
+        - name: Authorize the administrator's public key
+          ansible.posix.authorized_key:
+            user: "{{ guest.access.admin_user }}"
+            key: "{{ hostvars['localhost'].guest_admin.public_key }}"
+
+        - name: Reset the bootstrap SSH session
+          ansible.builtin.meta: reset_connection
+
+- name: Verify the admin session before disabling root access
+  ansible.builtin.command: id -un
+  changed_when: false
+  register: guest_verified_admin
+  delegate_to: "{{ guest_id }}"
+  vars:
+    guest: "{{ hostvars[guest_id] }}"
+    ansible_user: "{{ guest.access.admin_user }}"
+    ansible_private_key: "{{ hostvars['localhost'].guest_admin.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].guest_admin.key_passphrase }}"
+
+- name: Require the verified session to belong to the guest administrator
+  ansible.builtin.assert:
+    that: guest_verified_admin.stdout | trim == guest.access.admin_user
+
+- name: Configure the guest using the individual administrator
+  ansible.builtin.include_role:
+    name: guest
+    apply:
+      delegate_to: "{{ guest_id }}"
+      become: true
+  vars:
+    guest_plan: "{{ hostvars[guest_id] }}"
+    ansible_user: "{{ guest.access.admin_user }}"
+    ansible_private_key: "{{ hostvars['localhost'].guest_admin.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].guest_admin.key_passphrase }}"
+    ansible_become_password: "{{ hostvars['localhost'].guest_admin.sudo_password }}"
+
+- name: Configure the hypervisor path after the main router is ready
+  ansible.builtin.include_tasks: hypervisor-network.yml
+  when: guest_id == activate_after
+
+- name: Refresh an existing managed router before configuring its dependent guests
+  ansible.builtin.include_tasks: router-refresh.yml
+  vars:
+    generated: "{{ playbook_dir }}/../../configs/generated"
+  when:
+    - guest.network_owner is defined
+    - guest_network_owner.stat.exists
+
+- name: Reset the completed guest SSH session
+  ansible.builtin.meta: reset_connection

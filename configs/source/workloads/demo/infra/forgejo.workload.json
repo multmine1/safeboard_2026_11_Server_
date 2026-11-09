@@ -1,0 +1,331 @@
+{
+  "name": "forgejo",
+  "vm": "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+  "enabled": true,
+  "component": "forgejo",
+  "depends_on": [
+    "sealed-secrets",
+    "postgres-infra",
+    "nfs-infra"
+  ],
+  "required_secrets": [
+    "forgejo-admin",
+    "forgejo-tls",
+    "postgres-infra-app",
+    "postgres-infra-ca"
+  ],
+  "endpoints": {
+    "web": {
+      "service": "artifacts",
+      "scheme": "https",
+      "path": "/"
+    }
+  },
+  "chart": {
+    "values": {
+      "persistence": {
+        "claimName": "forgejo-files"
+      },
+      "extraVolumes": [
+        {
+          "name": "postgres-ca",
+          "secret": {
+            "secretName": "postgres-infra-ca"
+          }
+        },
+        {
+          "name": "web-tls",
+          "secret": {
+            "secretName": "forgejo-tls"
+          }
+        },
+        {
+          "name": "smtp",
+          "secret": {
+            "secretName": "forgejo-smtp"
+          }
+        },
+        {
+          "name": "trust",
+          "secret": {
+            "secretName": "forgejo-ca"
+          }
+        }
+      ],
+      "gitea": {
+        "admin": {
+          "existingSecret": "forgejo-admin"
+        },
+        "config": {
+          "database": {
+            "NAME": "forgejo"
+          },
+          "packages": {
+            "ENABLED": true
+          },
+          "actions": {
+            "ENABLED": true
+          },
+          "service": {
+            "REQUIRE_SIGNIN_VIEW": true
+          },
+          "mailer": {
+            "ENABLED": true,
+            "PROTOCOL": "smtps",
+            "PASSWD_URI": "file:/smtp/password",
+            "FORCE_TRUST_SERVER_CERT": false
+          }
+        },
+        "additionalConfigFromEnvs": [
+          {
+            "name": "FORGEJO__database__USER",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "postgres-infra-app",
+                "key": "username"
+              }
+            }
+          },
+          {
+            "name": "FORGEJO__database__PASSWD",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "postgres-infra-app",
+                "key": "password"
+              }
+            }
+          }
+        ]
+      },
+      "deployment": {
+        "env": [
+          {
+            "name": "PGSSLROOTCERT",
+            "value": "/postgres-ca/ca.crt"
+          },
+          {
+            "name": "SSL_CERT_DIR",
+            "value": "/trust"
+          }
+        ]
+      },
+      "extraContainerVolumeMounts": [
+        {
+          "name": "postgres-ca",
+          "mountPath": "/postgres-ca",
+          "readOnly": true
+        },
+        {
+          "name": "web-tls",
+          "mountPath": "/web-tls",
+          "readOnly": true
+        },
+        {
+          "name": "smtp",
+          "mountPath": "/smtp",
+          "readOnly": true
+        },
+        {
+          "name": "trust",
+          "mountPath": "/trust",
+          "readOnly": true
+        }
+      ],
+      "extraInitVolumeMounts": [
+        {
+          "name": "postgres-ca",
+          "mountPath": "/postgres-ca",
+          "readOnly": true
+        },
+        {
+          "name": "web-tls",
+          "mountPath": "/web-tls",
+          "readOnly": true
+        },
+        {
+          "name": "trust",
+          "mountPath": "/trust",
+          "readOnly": true
+        }
+      ]
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "forgejo-files"
+      },
+      "spec": {
+        "storageClassName": "",
+        "volumeName": "forgejo-files",
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "128Gi"
+          }
+        }
+      }
+    }
+  ],
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "forgejo-files"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "128Gi"
+        },
+        "volumeMode": "Filesystem",
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "forgejo-files",
+          "namespace": ""
+        },
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "nfs": {},
+        "mountOptions": [
+          "nfsvers=4.2"
+        ]
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/name",
+      "path": "/chart/values/fullnameOverride"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/deployment/labels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/gitea/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/service/http/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/artifacts/port",
+      "path": "/chart/values/service/http/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/artifacts/port",
+      "path": "/chart/values/gitea/config/server/HTTP_PORT"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/web",
+      "path": "/chart/values/gitea/config/server/ROOT_URL"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs/infra-data/forgejo/volume",
+      "path": "/cluster_resources/0/spec/nfs"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs/infra-data/forgejo/port_option",
+      "path": "/cluster_resources/0/spec/mountOptions/1"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/infra-sql/dns_socket",
+      "path": "/chart/values/gitea/config/database/HOST"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/submission/fqdn",
+      "path": "/chart/values/gitea/config/mailer/SMTP_ADDR"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/submission/port",
+      "path": "/chart/values/gitea/config/mailer/SMTP_PORT"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/forgejo",
+      "path": "/chart/values/gitea/config/mailer/USER"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/forgejo",
+      "path": "/chart/values/gitea/config/mailer/FROM"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/forgejo",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "secrets": {
+    "forgejo-admin": {
+      "provider": "vault"
+    },
+    "forgejo-tls": {
+      "provider": "certificate",
+      "services": [
+        "artifacts"
+      ]
+    },
+    "forgejo-smtp": {
+      "provider": "vault"
+    },
+    "forgejo-ca": {
+      "provider": "ca"
+    }
+  },
+  "mailboxes": [
+    "forgejo"
+  ]
+}

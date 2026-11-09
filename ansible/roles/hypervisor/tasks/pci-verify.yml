@@ -1,0 +1,36 @@
+- name: Inspect the real IOMMU group links and their targets
+  ansible.builtin.stat:
+    path: "{{ item.iommu_link }}"
+    follow: true
+    get_checksum: false
+  loop: "{{ hypervisor_pci.devices }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: hypervisor_pci_groups
+
+- name: Require real isolation groups before any PCI assignment
+  ansible.builtin.assert:
+    that: item.stat.isdir | default(false)
+    fail_msg: The declared device has no active IOMMU group. Verify firmware and kernel IOMMU support after reboot.
+  loop: "{{ hypervisor_pci_groups.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Read only the actual device links in each declared isolation group
+  ansible.builtin.find:
+    paths: "{{ item.iommu_link }}/devices"
+    file_type: link
+  loop: "{{ hypervisor_pci.devices }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: hypervisor_pci_group_members
+
+- name: Refuse an isolation group containing an undeclared device or another VM's function
+  ansible.builtin.assert:
+    that:
+      - item.matched > 0
+      - item.files | map(attribute='path') | map('basename') | difference(item.item.allowed_group_members) | length == 0
+    fail_msg: The IOMMU group crosses the prepared device boundary; no device was detached.
+  loop: "{{ hypervisor_pci_group_members.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

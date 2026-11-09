@@ -1,0 +1,14 @@
+{
+  "id": "fa226c98-5672-5491-99c1-1442558cf103",
+  "name": "control",
+  "type": "controller",
+  "vcpu": 2,
+  "ram_mib": 4096,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 24
+    }
+  ]
+}

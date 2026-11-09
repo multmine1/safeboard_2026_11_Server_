@@ -1,0 +1,35 @@
+- name: Prepare the physical hypervisor bridge and address after an OS installation
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/host-requirements.json
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Check the selected host platform before installing network packages
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: platform
+      become: false
+
+    - name: Install only the declared network prerequisites
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: packages
+      vars:
+        hypervisor_managed_packages: "{{ hypervisor_network_packages }}"
+
+    - name: Enable the declared physical network manager
+      ansible.builtin.service:
+        name: "{{ hypervisor_network.renderer }}"
+        state: started
+        enabled: true
+
+    - name: Apply the prepared physical network using the shared hypervisor role
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: network

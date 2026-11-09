@@ -1,0 +1,25 @@
+- name: Serialize the prepared socket and service units
+  ansible.builtin.template:
+    src: systemd-unit.j2
+    dest: "{{ item.path }}"
+    mode: "{{ hypervisor_file_mode }}"
+  vars:
+    hypervisor_unit_definition: "{{ item.definition }}"
+  loop:
+    - {path: "{{ socket_proxy.socket_path }}", definition: "{{ socket_proxy.socket }}"}
+    - {path: "{{ socket_proxy.service_path }}", definition: "{{ socket_proxy.service }}"}
+  register: hypervisor_proxy_units
+
+- name: Release the previous proxy process when its definition changes
+  ansible.builtin.systemd_service:
+    name: "{{ socket_proxy.service_unit }}"
+    state: stopped
+    daemon_reload: true
+  when: hypervisor_proxy_units.changed
+
+- name: Activate the private socket with the prepared definition
+  ansible.builtin.systemd_service:
+    name: "{{ socket_proxy.socket_unit }}"
+    enabled: true
+    daemon_reload: "{{ hypervisor_proxy_units.changed }}"
+    state: "{{ 'restarted' if hypervisor_proxy_units.changed else 'started' }}"

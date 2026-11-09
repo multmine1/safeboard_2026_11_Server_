@@ -1,0 +1,17 @@
+- name: Prepare this recorded observation
+  ansible.builtin.set_fact:
+    nextcloud_observations: "{{ healthy_observations | combine(acceptance_case.overrides) }}"
+    nextcloud_accepted: true
+
+- name: Evaluate the production acceptance conditions
+  block:
+    - name: Check the prepared observation
+      ansible.builtin.include_tasks: ../playbooks/stages/nextcloud-assert.yml
+  rescue:
+    - name: Record the rejected observation
+      ansible.builtin.set_fact:
+        nextcloud_accepted: false
+
+- name: Require the expected acceptance decision
+  ansible.builtin.assert:
+    that: nextcloud_accepted == acceptance_case.accepted

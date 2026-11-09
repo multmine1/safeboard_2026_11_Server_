@@ -1,0 +1,74 @@
+- name: Prepare the private native Git checkout directory
+  ansible.builtin.file:
+    path: "{{ ci_repository_checkout | dirname }}"
+    state: directory
+    mode: '0700'
+
+- name: Publish the selected portal source with credentials only in process memory
+  environment:
+    GIT_ASKPASS: "{{ playbook_dir }}/../../scripts/_git_askpass.py"
+    FORGEJO_GIT_USERNAME: "{{ forgejo_admin.username }}"
+    FORGEJO_GIT_TOKEN: "{{ vault_store.ci.api_token }}"
+    GIT_TERMINAL_PROMPT: '0'
+    GIT_SSL_CAINFO: "{{ playbook_dir }}/../../configs/secrets/ca.crt"
+    https_proxy: "socks5h://{{ local_access.socks_address }}"
+    LC_ALL: C
+    GIT_AUTHOR_NAME: "{{ components['admin-portal'].delivery.author.name }}"
+    GIT_AUTHOR_EMAIL: "{{ components['admin-portal'].delivery.author.email }}"
+    GIT_COMMITTER_NAME: "{{ components['admin-portal'].delivery.author.name }}"
+    GIT_COMMITTER_EMAIL: "{{ components['admin-portal'].delivery.author.email }}"
+  block:
+    - name: Clone the private repository with its native tracking branch
+      ansible.builtin.git:
+        repo: "{{ ci_repository_metadata.clone_url }}"
+        dest: "{{ ci_repository_checkout }}"
+        version: "{{ ci_project.repository.default_branch }}"
+        update: false
+      no_log: true
+
+    - name: Copy only the declared portal application source
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../{{ components['admin-portal'].delivery.source_directory }}/"
+        dest: "{{ ci_repository_checkout }}/"
+        mode: preserve
+
+    - name: Create the native workflow directory
+      ansible.builtin.file:
+        path: "{{ ci_repository_checkout }}/.forgejo/workflows"
+        state: directory
+        mode: '0755'
+
+    - name: Copy the generated native delivery workflow
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../configs/generated/k0s/applications/ci/delivery.yml"
+        dest: "{{ ci_repository_checkout }}/.forgejo/workflows/{{ components['admin-portal'].delivery.workflow_file }}"
+        mode: '0644'
+
+    - name: Read only whether source files have changed # noqa command-instead-of-module
+      ansible.builtin.command: git status --porcelain
+      args:
+        chdir: "{{ ci_repository_checkout }}"
+      register: ci_repository_source_status
+      changed_when: false
+
+    - name: Add the complete declared application source # noqa command-instead-of-module
+      ansible.builtin.command: git add .
+      args:
+        chdir: "{{ ci_repository_checkout }}"
+      when: ci_repository_source_status.stdout | length > 0
+      changed_when: true
+
+    - name: Commit only a changed portal source # noqa command-instead-of-module
+      ansible.builtin.command: git commit -m "Deploy private infrastructure portal"
+      args:
+        chdir: "{{ ci_repository_checkout }}"
+      when: ci_repository_source_status.stdout | length > 0
+      changed_when: true
+
+    - name: Push the native tracking branch to start its delivery pipeline # noqa command-instead-of-module
+      ansible.builtin.command: git push
+      args:
+        chdir: "{{ ci_repository_checkout }}"
+      register: ci_repository_source_push
+      changed_when: "'Everything up-to-date' not in ci_repository_source_push.stderr"
+      no_log: true

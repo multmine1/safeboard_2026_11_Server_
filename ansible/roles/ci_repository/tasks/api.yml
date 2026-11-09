@@ -1,0 +1,84 @@
+- name: Bind only the selected repository's variables and credentials
+  ansible.builtin.set_fact:
+    ci_repository_api: "{{ ci_repository_origin }}/api/v1/repos/{{ forgejo_admin.username }}/{{ ci_project.repository.name }}"
+    ci_repository_variables:
+      BASE_IMAGE: "{{ ci_project.base_image }}"
+      IMAGE_REPOSITORY: "{{ ci_project.image_repository }}"
+      BUNDLE_REPOSITORY: "{{ ci_project.bundle_repository }}"
+      APP_RELEASE: "{{ ci_project.release }}"
+      APP_NAMESPACE: "{{ ci_project.namespace }}"
+      DEPLOY_VALUES: "{{ ci_delivery_values }}"
+      DEPLOY_REVISION: "{{ ci_project.deployment_revision }}"
+    ci_repository_variables_changed: false
+    ci_repository_secrets:
+      REGISTRY_USERNAME: "{{ registry_admin.username }}"
+      REGISTRY_PASSWORD: "{{ registry_admin.password }}"
+      COSIGN_PASSWORD: "{{ vault_store.ci.signing_password }}"
+  no_log: true
+
+- name: Record the desired confidential delivery revision only in memory
+  ansible.builtin.set_fact:
+    ci_repository_secret_revision: "{{ ci_repository_secrets | to_json(sort_keys=true) | hash('sha256') }}"
+  no_log: true
+
+- name: Configure the repository through the hypervisor's verified HTTPS path
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Create a temporary public trust anchor
+      ansible.builtin.tempfile:
+        state: file
+      register: ci_repository_ca
+
+    - name: Write only the public certificate authority
+      ansible.builtin.copy:
+        content: "{{ vault_store.pki.ca.certificate }}"
+        dest: "{{ ci_repository_ca.path }}"
+        mode: '0600'
+      no_log: true
+
+    - name: Apply the native repository and Actions settings
+      ansible.builtin.include_tasks: repository.yml
+      vars:
+        ci_repository_headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+
+    - name: Bind each prepared repository variable
+      ansible.builtin.include_tasks: variable.yml
+      loop: "{{ ci_repository_variables | dict2items }}"
+      loop_control:
+        loop_var: ci_repository_variable
+        label: "{{ ci_repository_variable.key }}"
+      vars:
+        ci_repository_headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+
+    - name: Read only the names of configured repository secrets
+      ansible.builtin.uri:
+        url: "{{ ci_repository_api }}/actions/secrets"
+        headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+        ca_path: "{{ ci_repository_ca.path }}"
+      register: ci_repository_existing_secret_names
+      no_log: true
+
+    - name: Deliver missing or changed native repository secrets
+      ansible.builtin.uri:
+        url: "{{ ci_repository_api }}/actions/secrets/{{ item.key }}"
+        method: PUT
+        headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+        ca_path: "{{ ci_repository_ca.path }}"
+        body_format: json
+        body: {data: "{{ item.value }}"}
+        status_code: [201, 204]
+      loop: "{{ ci_repository_secrets | dict2items }}"
+      when: >-
+        item.key not in (ci_repository_existing_secret_names.json | map(attribute='name') | list) or
+        vault_store.ci.get('repository_secrets', {}).get(ci_project.repository.name, '') != ci_repository_secret_revision
+      changed_when: true
+      register: ci_repository_delivered_secrets
+      no_log: true
+  always:
+    - name: Remove the temporary public trust anchor
+      ansible.builtin.file:
+        path: "{{ ci_repository_ca.path }}"
+        state: absent
+      when: ci_repository_ca.path is defined

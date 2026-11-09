@@ -1,0 +1,4 @@
+add_library(skeleton_contracts INTERFACE)
+target_include_directories(skeleton_contracts INTERFACE include)
+target_compile_features(skeleton_contracts INTERFACE cxx_std_20)
+target_link_libraries(skeleton_contracts INTERFACE nlohmann_json::nlohmann_json)

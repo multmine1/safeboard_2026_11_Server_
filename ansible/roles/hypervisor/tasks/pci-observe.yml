@@ -1,0 +1,28 @@
+- name: Read whether firmware exposes the required IOMMU table
+  ansible.builtin.stat:
+    path: "{{ hypervisor_pci.firmware_table }}"
+    get_checksum: false
+  register: hypervisor_pci_firmware
+
+- name: Require firmware IOMMU support before allowing PCI assignment
+  ansible.builtin.assert:
+    that: hypervisor_pci_firmware.stat.exists
+    fail_msg: >-
+      Firmware IOMMU table {{ hypervisor_pci.firmware_table }} is missing.
+      Check VT-d/IOMMU in UEFI before enabling PCI passthrough. No devices were detached.
+
+- name: Read only the declared physical device classes
+  ansible.builtin.slurp:
+    src: "{{ item.class_path }}"
+  loop: "{{ hypervisor_pci.devices }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: hypervisor_pci_classes
+
+- name: Reject devices outside the declared accelerator and audio policy
+  ansible.builtin.assert:
+    that: item.content | b64decode | trim in hypervisor_pci.allowed_classes
+    fail_msg: A declared PCI device has a forbidden hardware class.
+  loop: "{{ hypervisor_pci_classes.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

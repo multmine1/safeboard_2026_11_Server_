@@ -1,0 +1,5 @@
+- name: Apply each prepared private socket proxy
+  ansible.builtin.include_tasks: proxy.yml
+  loop: "{{ hypervisor_socket_proxies }}"
+  loop_control:
+    loop_var: socket_proxy

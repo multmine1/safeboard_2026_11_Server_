@@ -1,0 +1,31 @@
+- name: Configure running guests in the generated router-first order
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/deployment.json
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/applied.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  tasks:
+    - name: Read the current guest and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+    - name: Make the encrypted human account data available to guest variables
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        guest_users: "{{ vault_store.guest_users }}"
+      loop: "{{ infrastructure.vms.keys() }}"
+      no_log: true
+
+    - name: Apply each prepared stage
+      ansible.builtin.include_tasks: stages/guest.yml
+      loop: "{{ stages | selectattr('configure_vm', 'defined') }}"
+      loop_control:
+        loop_var: stage
+        label: "{{ stage.configure_vm }}"
+      vars:
+        guest_id: "{{ stage.configure_vm }}"
+        guest: "{{ hostvars[guest_id] }}"
+      when: guest_id in available_vms

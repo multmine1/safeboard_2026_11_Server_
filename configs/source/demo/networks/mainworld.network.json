@@ -1,0 +1,11 @@
+{
+  "id": "913b586c-5cab-540c-acf2-25e346c82719",
+  "name": "demo",
+  "members": [
+    "f3d4e2bd-0d66-54a5-b116-7a6156d9912d",
+    "c3d62da6-9b30-55dd-be7e-4db6c99485ac",
+    "d0d14281-f847-50b6-943d-07b8e351031d"
+  ],
+  "allow": [],
+  "router": "a92533cb-39f3-5354-a1f9-9eaf5af7d19f"
+}

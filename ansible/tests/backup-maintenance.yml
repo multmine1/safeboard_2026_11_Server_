@@ -1,0 +1,22 @@
+- name: Read the application's prepared maintenance status
+  ansible.builtin.command:
+    argv: "{{ backup_quiesce.status_argv }}"
+  delegate_to: "{{ backup_quiesce.vm }}"
+  become: true
+  vars:
+    ansible_user: "{{ hostvars[backup_quiesce.vm].access.admin_user }}"
+    ansible_private_key: "{{ vault_store.guests[backup_quiesce.vm].private_key }}"
+    ansible_private_key_passphrase: "{{ vault_store.guests[backup_quiesce.vm].key_passphrase }}"
+    ansible_become_password: "{{ vault_store.guests[backup_quiesce.vm].sudo_password }}"
+  changed_when: false
+  register: backup_quiesce_status
+
+- name: Require backup to leave the application outside maintenance mode
+  ansible.builtin.assert:
+    that: not (backup_quiesce_status.stdout | from_json).maintenance
+  when: backup_quiesce.filesystem_mount is not defined
+
+- name: Require backup to leave the guest filesystem protection inactive
+  ansible.builtin.assert:
+    that: backup_quiesce_status.stdout | trim == 'inactive'
+  when: backup_quiesce.filesystem_mount is defined

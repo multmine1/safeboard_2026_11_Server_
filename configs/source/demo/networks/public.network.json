@@ -1,0 +1,292 @@
+{
+  "id": "4ef34f2c-850c-5070-afca-e9b48f6b2df8",
+  "name": "public",
+  "members": [
+    "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+    "51ca2996-3113-5182-84d3-56bc448f55a8",
+    "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+    "344e9460-48bf-5abb-9745-132485ce8c16",
+    "41155bf6-5bac-5c26-b462-89f88834842c"
+  ],
+  "allow": [
+    {
+      "from": "344e9460-48bf-5abb-9745-132485ce8c16",
+      "to": "431196f0-9f98-596c-b9f2-a7852e10ec95"
+    },
+    {
+      "from": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "to": "cf69f40e-520f-5d54-ab2d-7712b5d081f9"
+    },
+    {
+      "from": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "to": "02b15b9b-8a2d-5b6d-bfb8-3fc5d030c8f1"
+    },
+    {
+      "from": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "to": "7372c6e1-72d3-56ac-b458-365de247d0fd"
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "1784f32a-6e79-5cc3-b2ce-67b5e87fba8e"
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "7372c6e1-72d3-56ac-b458-365de247d0fd"
+    },
+    {
+      "from": "344e9460-48bf-5abb-9745-132485ce8c16",
+      "to": "7372c6e1-72d3-56ac-b458-365de247d0fd"
+    },
+    {
+      "from": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "to": "431196f0-9f98-596c-b9f2-a7852e10ec95"
+    },
+    {
+      "from": "344e9460-48bf-5abb-9745-132485ce8c16",
+      "to": "1784f32a-6e79-5cc3-b2ce-67b5e87fba8e"
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "b0e84e38-54e9-551d-bc28-b5106297fc61"
+    },
+    {
+      "from": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "to": "71cfa92e-3e31-5054-9cc4-0188121d454f"
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "431196f0-9f98-596c-b9f2-a7852e10ec95"
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "b4237d69-7154-589e-a6a6-75a353945cc0"
+    },
+    {
+      "from": "344e9460-48bf-5abb-9745-132485ce8c16",
+      "to": "b4237d69-7154-589e-a6a6-75a353945cc0"
+    },
+    {
+      "from": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "to": "1784f32a-6e79-5cc3-b2ce-67b5e87fba8e"
+    },
+    {
+      "from": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "to": "internet",
+      "protocol": "tcp",
+      "ports": [
+        25
+      ]
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "3c76cb46-42c9-5f7c-9f1a-ba6abd6a8f3d"
+    },
+    {
+      "from": "344e9460-48bf-5abb-9745-132485ce8c16",
+      "to": "3c76cb46-42c9-5f7c-9f1a-ba6abd6a8f3d"
+    },
+    {
+      "from": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "to": "3a9aba38-0f0e-5d9b-a265-2699c695d153"
+    }
+  ],
+  "router": "d0d14281-f847-50b6-943d-07b8e351031d",
+  "exports": [
+    {
+      "id": "1784f32a-6e79-5cc3-b2ce-67b5e87fba8e",
+      "name": "public-sql",
+      "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+      "protocol": "tcp",
+      "port": 25432,
+      "scope": "internal",
+      "target_port": 5432,
+      "sources": []
+    },
+    {
+      "id": "431196f0-9f98-596c-b9f2-a7852e10ec95",
+      "name": "public-data",
+      "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+      "protocol": "tcp",
+      "port": 22049,
+      "scope": "internal",
+      "target_port": 2049,
+      "sources": []
+    },
+    {
+      "id": "7372c6e1-72d3-56ac-b458-365de247d0fd",
+      "name": "registry",
+      "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+      "protocol": "tcp",
+      "port": 5000,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "cf69f40e-520f-5d54-ab2d-7712b5d081f9",
+      "name": "portfolio-backend",
+      "vm": "344e9460-48bf-5abb-9745-132485ce8c16",
+      "protocol": "tcp",
+      "port": 13000,
+      "scope": "uplink",
+      "target_port": 3000,
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "02b15b9b-8a2d-5b6d-bfb8-3fc5d030c8f1",
+      "name": "application",
+      "vm": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "protocol": "tcp",
+      "port": 8080,
+      "scope": "internal",
+      "sources": []
+    },
+    {
+      "id": "1db2a42f-14e9-5726-8bed-5cb1f517be29",
+      "name": "http",
+      "vm": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "protocol": "tcp",
+      "port": 80,
+      "scope": "uplink",
+      "sources": [
+        "0.0.0.0/0"
+      ]
+    },
+    {
+      "id": "b4237d69-7154-589e-a6a6-75a353945cc0",
+      "name": "https",
+      "vm": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+      "protocol": "tcp",
+      "port": 443,
+      "scope": "uplink",
+      "sources": [
+        "0.0.0.0/0"
+      ],
+      "aliases": [
+        "cloud",
+        "portfolio"
+      ]
+    },
+    {
+      "id": "b0e84e38-54e9-551d-bc28-b5106297fc61",
+      "name": "cache",
+      "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+      "protocol": "tcp",
+      "port": 16379,
+      "target_port": 6379,
+      "scope": "internal",
+      "sources": []
+    },
+    {
+      "id": "71cfa92e-3e31-5054-9cc4-0188121d454f",
+      "name": "nextcloud-backend",
+      "vm": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "protocol": "tcp",
+      "port": 18443,
+      "target_port": 8443,
+      "scope": "internal",
+      "sources": []
+    },
+    {
+      "id": "baf00787-336b-504d-8faa-be188deac174",
+      "name": "mail",
+      "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "protocol": "tcp",
+      "port": 25,
+      "target_port": 25,
+      "scope": "uplink",
+      "sources": [
+        "0.0.0.0/0"
+      ]
+    },
+    {
+      "id": "3c76cb46-42c9-5f7c-9f1a-ba6abd6a8f3d",
+      "name": "submission",
+      "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "protocol": "tcp",
+      "port": 465,
+      "target_port": 465,
+      "scope": "uplink",
+      "sources": [
+        "0.0.0.0/0"
+      ]
+    },
+    {
+      "id": "3a9aba38-0f0e-5d9b-a265-2699c695d153",
+      "name": "imaps",
+      "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "protocol": "tcp",
+      "port": 993,
+      "target_port": 993,
+      "scope": "uplink",
+      "sources": [
+        "0.0.0.0/0"
+      ]
+    },
+    {
+      "id": "cddda1de-2270-5ed9-8dad-d8c37d25911c",
+      "name": "mail-admin",
+      "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "protocol": "tcp",
+      "port": 18444,
+      "target_port": 443,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "c78d1fba-de24-5c85-a8a5-b9473fa1279a",
+      "name": "smtp-notifications",
+      "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "protocol": "tcp",
+      "port": 2587,
+      "target_port": 587,
+      "scope": "internal",
+      "sources": []
+    },
+    {
+      "id": "70f2d3f3-94cb-59c8-862c-1a441ab698e8",
+      "name": "admin-backend",
+      "vm": "51ca2996-3113-5182-84d3-56bc448f55a8",
+      "protocol": "tcp",
+      "port": 18445,
+      "target_port": 8445,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "3fbcc9f5-0cd0-5844-a8e8-620ccf23d859",
+      "name": "public-backup-data",
+      "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+      "protocol": "tcp",
+      "port": 12149,
+      "target_port": 2049,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "9a06a626-e418-52c9-ae27-e8ed584317d6",
+      "name": "mail-backup-data",
+      "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+      "protocol": "tcp",
+      "port": 12150,
+      "target_port": 2049,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    }
+  ],
+  "dns_upstreams": [
+    "1.1.1.1",
+    "9.9.9.9"
+  ]
+}

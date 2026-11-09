@@ -1,0 +1,18 @@
+{% for section in ['agent', 'global_tags'] %}
+{% if section in hypervisor_monitoring.configuration %}
+[{{ section }}]
+{% for key, value in hypervisor_monitoring.configuration[section].items() %}
+{{ key }} = {{ value | to_json }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% for direction in ['inputs', 'outputs'] %}
+{% for name, plugins in hypervisor_monitoring.configuration[direction].items() %}
+{% for plugin in plugins %}
+[[{{ direction }}.{{ name }}]]
+{% for key, value in plugin.items() %}
+{{ key }} = {{ value | to_json }}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endfor %}

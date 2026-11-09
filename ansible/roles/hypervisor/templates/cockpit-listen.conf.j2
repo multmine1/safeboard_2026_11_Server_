@@ -1,0 +1,6 @@
+[Socket]
+ListenStream=
+ListenStream={{ hypervisor_cockpit.listen }}
+{% if hypervisor_cockpit.free_bind is defined %}
+FreeBind={{ hypervisor_cockpit.free_bind | ternary('yes', 'no') }}
+{% endif %}

@@ -1,0 +1,51 @@
+- name: Read the same saved native plan for a nonempty state
+  ansible.builtin.command:
+    argv: [tofu, show, -json, "{{ reset.paths.plan }}"]
+    chdir: "{{ reset.paths.tofu }}"
+  register: reset_native_plan
+  when: reset_state_addresses | length > 0
+  changed_when: false
+  no_log: true
+
+- name: Restrict the existing saved plan
+  ansible.builtin.file:
+    path: "{{ reset.paths.plan }}"
+    mode: "{{ reset.file_mode }}"
+  when: reset_state_addresses | length > 0
+
+- name: Save the private native state and plan snapshot
+  ansible.builtin.copy:
+    content: >-
+      {{ {'state_addresses': reset_state_addresses,
+          'plan': (reset_native_plan.stdout | from_json) if reset_state_addresses | length > 0 else none} | to_nice_json }}
+    dest: "{{ reset.paths.snapshot }}"
+    mode: "{{ reset.file_mode }}"
+  no_log: true
+
+- name: Inspect the declared hypervisor filesystem through its existing SSH transport
+  ansible.builtin.import_tasks: reset-filesystem.yml
+
+- name: Validate the prepared backup permission targets before any teardown
+  ansible.builtin.import_tasks: reset-backup-inspect.yml
+  when: reset.backup_repository_access is defined
+
+- name: Validate exact resource identities and filesystem boundaries in C++
+  ansible.builtin.command:
+    argv:
+      - "{{ reset.paths.validator }}"
+      - check-reset
+      - "{{ generated }}/ansible/reset.json"
+      - "{{ reset.paths.scope }}"
+      - "{{ reset.paths.snapshot }}"
+      - "{{ reset.paths.filesystem }}"
+  register: reset_validation
+  changed_when: false
+
+- name: Retain only the filtered reset preview
+  ansible.builtin.set_fact:
+    reset_preview: >-
+      {{ (reset_validation.stdout | from_json) |
+         combine({'host_pool_removals': reset.platform_pools, 'preserved_boundary': reset.boundary}) }}
+
+- name: Inspect libvirt and the physical host independently of the guests
+  ansible.builtin.import_tasks: reset-inventory.yml

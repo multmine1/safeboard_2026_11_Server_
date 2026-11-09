@@ -1,0 +1,86 @@
+- name: Check our recovery boundary without Helm or Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    recovery_revision: 3
+    recovery_expected_revision: 4
+    recovery_namespace: net-fixture
+    cluster:
+      settings:
+        paths:
+          binary: /native/k0s
+    recovery_helm_history:
+      - {revision: 3, status: deployed}
+      - {revision: 4, status: pending-upgrade}
+  tasks:
+    - name: Plan recovery of the interrupted operation
+      ansible.builtin.include_tasks: ../playbooks/stages/helm-recovery-plan.yml
+
+    - name: Require rollback only to the declared completed revision
+      ansible.builtin.assert:
+        that: recovery_helm_required and recovery_helm_target.revision == 3
+
+    - name: Require ownership return to bind the exact release namespace
+      ansible.builtin.assert:
+        that:
+          - "'--namespace' in recovery_helm_owner_argv"
+          - recovery_helm_owner_argv[recovery_helm_owner_argv.index('--namespace') + 1] == recovery_namespace
+
+    - name: Model a successful recovery
+      ansible.builtin.set_fact:
+        recovery_helm_history: "{{ recovery_helm_history + [{'revision': 5, 'status': 'deployed'}] }}"
+
+    - name: Plan the repeated invocation
+      ansible.builtin.include_tasks: ../playbooks/stages/helm-recovery-plan.yml
+
+    - name: Require no rollback of an already completed release
+      ansible.builtin.assert:
+        that: not recovery_helm_required
+
+    - name: Model an interrupted recovery that failed
+      ansible.builtin.set_fact:
+        recovery_expected_revision: 6
+        recovery_helm_history: "{{ recovery_helm_history + [{'revision': 6, 'status': 'failed'}] }}"
+
+    - name: Plan the failed operation's recovery
+      ansible.builtin.include_tasks: ../playbooks/stages/helm-recovery-plan.yml
+
+    - name: Require recovery after a failed native operation
+      ansible.builtin.assert:
+        that: recovery_helm_required
+
+    - name: Reject an incomplete target revision
+      block:
+        - name: Select the interrupted revision as a target
+          ansible.builtin.set_fact:
+            recovery_revision: 4
+
+        - name: Validate this invalid recovery request
+          ansible.builtin.include_tasks: ../playbooks/stages/helm-recovery-plan.yml
+
+        - name: Reject an unexpectedly accepted incomplete target
+          ansible.builtin.fail:
+            msg: Incomplete rollback target was accepted
+      rescue:
+        - name: Require rejection by the recovery contract
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Require a completed, older target revision'
+
+    - name: Reject a release that changed after its recovery plan
+      block:
+        - name: Select the earlier observed revision
+          ansible.builtin.set_fact:
+            recovery_revision: 3
+            recovery_expected_revision: 4
+
+        - name: Validate the stale recovery request
+          ansible.builtin.include_tasks: ../playbooks/stages/helm-recovery-plan.yml
+
+        - name: Reject an unexpectedly accepted stale plan
+          ansible.builtin.fail:
+            msg: Changed release state was accepted
+      rescue:
+        - name: Require rejection of the changed release
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Require the interrupted revision to match the reviewed plan'

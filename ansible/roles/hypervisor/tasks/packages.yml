@@ -1,0 +1,13 @@
+- name: Prepare the declared package repositories
+  ansible.builtin.import_tasks: package-sources.yml
+
+- name: Install the declared pinned host packages
+  ansible.builtin.apt:
+    name: "{{ hypervisor_managed_packages }}"
+    update_cache: true
+
+- name: Hold the declared package versions
+  ansible.builtin.dpkg_selections:
+    name: "{{ item.split('=')[0] }}"
+    selection: hold
+  loop: "{{ hypervisor_managed_packages }}"

@@ -1,0 +1,42 @@
+- name: Inspect the physical repository through the hypervisor bootstrap alias
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+  block:
+    - name: Require the declared physical filesystem to be mounted
+      ansible.builtin.command:
+        argv: "{{ backup.mount_check_argv }}"
+      changed_when: false
+      check_mode: false
+
+    - name: Resolve the actual repository location without creating it
+      ansible.builtin.command:
+        argv: "{{ backup.repository_realpath_argv }}"
+      register: backup_repository_location
+      changed_when: false
+      check_mode: false
+
+    - name: Reject a repository redirected by a symbolic link
+      ansible.builtin.assert:
+        that: backup_repository_location.stdout == backup.repository
+
+    - name: Inspect the native repository marker
+      ansible.builtin.stat:
+        path: "{{ backup.repository_config }}"
+      register: backup_repository_config
+
+- name: Reject a controller cache redirected by a symbolic link
+  ansible.builtin.assert:
+    that: (backup.cache | realpath) == backup.cache
+
+- name: Require the existing repository password from the shared Vault
+  ansible.builtin.assert:
+    that: vault_store.get('backup', {}).get('repository_password', '') | length > 0
+    fail_msg: Prepare credentials and retain an independent encrypted Vault copy before repository initialization.
+  no_log: true
+
+- name: Require initialization before other repository operations
+  ansible.builtin.assert:
+    that: backup_action == 'init' or backup_repository_config.stat.exists
+    fail_msg: Initialize the repository explicitly before using it.

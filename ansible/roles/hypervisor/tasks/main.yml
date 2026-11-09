@@ -1,0 +1,30 @@
+- name: Install and hold the declared hypervisor and network packages
+  ansible.builtin.import_tasks: packages.yml
+  vars:
+    hypervisor_managed_packages: "{{ hypervisor_packages + hypervisor_network_packages }}"
+
+- name: Enable only the declared foundation services
+  ansible.builtin.import_tasks: services.yml
+
+- name: Configure the libvirt account and SSH access
+  ansible.builtin.import_tasks: access.yml
+- name: Mount the declared host storage
+  ansible.builtin.import_tasks: storage.yml
+- name: Apply the host OS configuration
+  ansible.builtin.import_tasks: configuration.yml
+- name: Prepare independent local resolution of host services
+  ansible.builtin.import_tasks: hosts.yml
+  when: hypervisor_hosts is defined
+- name: Apply the declared boot configuration
+  ansible.builtin.import_tasks: boot.yml
+- name: Configure the private virtual machine console
+  ansible.builtin.import_tasks: cockpit.yml
+- name: Apply the physical bridge configuration
+  ansible.builtin.import_tasks: network.yml
+- name: Prepare the independent hypervisor metrics collector
+  ansible.builtin.import_tasks: monitoring.yml
+  when: hypervisor_monitoring is defined
+
+- name: Configure the prepared private socket proxies
+  ansible.builtin.import_tasks: proxies.yml
+  when: hypervisor_socket_proxies is defined

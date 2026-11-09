@@ -1,0 +1,52 @@
+- name: Validate only the rendered Mac fallback and local Linux SSH profiles
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hypervisor_user: controller
+    identity_file: /dev/null
+    identity_agent: none
+    ssh_connections:
+      - aliases: [fixture-hypervisor]
+        hostname: 192.0.2.2
+        host_key_alias: fixture-host-key
+        proxy_command: /usr/bin/nc -G 1 192.0.2.2 %p || exec /usr/bin/ssh -W 203.0.113.2:%p bastion
+  tasks:
+    - name: Create only a private local directory for the profile output
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: skeleton-ssh-profile-
+      register: ssh_fixture_directory
+
+    - name: Render and validate the two supported controller profiles
+      block:
+        - name: Render the actual native template for each controller
+          ansible.builtin.template:
+            src: ../roles/hypervisor/templates/ssh.conf.j2
+            dest: "{{ ssh_fixture_directory.path }}/{{ item }}"
+            mode: '0600'
+          vars:
+            ssh_use_fallback: "{{ item == 'mac' }}"
+          loop: [mac, linux]
+
+        - name: Parse the generated profiles without opening a network connection
+          ansible.builtin.command:
+            argv: [ssh, -G, -F, "{{ ssh_fixture_directory.path }}/{{ item }}", fixture-hypervisor]
+          loop: [mac, linux]
+          register: ssh_fixture_effective
+          changed_when: false
+
+        - name: Require fallback only on Mac and stable host identity on both controllers
+          ansible.builtin.assert:
+            that:
+              - "'proxycommand /usr/bin/nc ' in ssh_fixture_effective.results[0].stdout"
+              - "'proxycommand /usr/bin/nc ' not in ssh_fixture_effective.results[1].stdout"
+              - "'hostname 192.0.2.2' in item.stdout"
+              - "'hostkeyalias fixture-host-key' in item.stdout"
+          loop: "{{ ssh_fixture_effective.results }}"
+
+      always:
+        - name: Remove only the generated fixture profiles
+          ansible.builtin.file:
+            path: "{{ ssh_fixture_directory.path }}"
+            state: absent

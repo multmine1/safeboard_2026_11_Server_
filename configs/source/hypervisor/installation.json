@@ -1,0 +1,61 @@
+{
+  "partition_table": "gpt",
+  "alignment_mib": 1,
+  "storage": {
+    "nvme": [
+      {
+        "filesystem": "vfat",
+        "mountpoint": "/boot/efi",
+        "size_mib": 512
+      },
+      {
+        "filesystem": "ext4",
+        "mountpoint": "/",
+        "size_mib": "remaining",
+        "minimum_mib": 4096
+      }
+    ],
+    "ssd": [
+      {
+        "filesystem": "ext4",
+        "size_mib": "remaining",
+        "minimum_mib": 1
+      }
+    ],
+    "hd": [
+      {
+        "filesystem": "ext4",
+        "size_mib": "remaining",
+        "minimum_mib": 1
+      }
+    ]
+  },
+  "bootstrap": {
+    "payload_directory": "/skeleton",
+    "ram_directory": "/run/skeleton-installer",
+    "authorized_keys_mode": "0600",
+    "root_home": "/root",
+    "sshd": {
+      "path": "/etc/ssh/sshd_config.d/00-installer.conf",
+      "mode": "0644",
+      "options": {
+        "PermitRootLogin": "prohibit-password",
+        "PasswordAuthentication": "no",
+        "KbdInteractiveAuthentication": "no",
+        "PubkeyAuthentication": "yes"
+      }
+    },
+    "ifupdown": {
+      "path": "/etc/network/interfaces",
+      "mode": "0644",
+      "content": "auto lo\niface lo inet loopback\n"
+    },
+    "services": {
+      "NetworkManager.service": "enable",
+      "systemd-resolved.service": "enable",
+      "ssh.service": "enable",
+      "networking.service": "disable"
+    },
+    "previous_root_filesystem": "ext4"
+  }
+}

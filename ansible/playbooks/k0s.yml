@@ -1,0 +1,144 @@
+- name: Bootstrap the prepared k0s cluster and hand routers over to Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+    - ../../configs/generated/ansible/applied.json
+    - ../../configs/generated/ansible/deployment.json
+  vars:
+    generated: "{{ playbook_dir }}/../../configs/generated"
+  tasks:
+    - name: Read the prepared cluster plan
+      ansible.builtin.include_vars:
+        file: "{{ generated }}/k0s/cluster.json"
+        name: cluster
+
+    - name: Read the current guest and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+    - name: Require a running control plane and its entire router path
+      ansible.builtin.assert:
+        that: cluster.controller in available_vms
+        fail_msg: Start the controller and the routers on its generated path.
+
+    - name: Select running reachable nodes in the prepared order
+      ansible.builtin.set_fact:
+        runtime_cluster_order: "{{ cluster.order | select('in', available_vms) | list }}"
+
+    - name: Read the controller's encrypted administrator
+      ansible.builtin.set_fact:
+        control_secrets: "{{ {'guest_admin': vault_store.guests[cluster.controller]} }}"
+      no_log: true
+
+    - name: Install the control plane before joining workers
+      ansible.builtin.include_tasks: stages/k0s-node.yml
+      vars:
+        node_id: "{{ cluster.controller }}"
+
+    - name: Configure the cluster through its controller
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].control_secrets.guest_admin.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].control_secrets.guest_admin.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].control_secrets.guest_admin.sudo_password }}"
+      block:
+        - name: Wait for the API without depending on DNS
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, get, --raw=/readyz]
+          register: cluster_api
+          until: cluster_api.rc == 0
+          retries: "{{ cluster.settings.deployment.api_retries }}"
+          delay: "{{ cluster.settings.deployment.api_delay }}"
+          changed_when: false
+
+        - name: Wait for the bundled Calico resource definitions
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, --for=condition=Established,
+                   crd/ippools.crd.projectcalico.org, crd/bgppeers.crd.projectcalico.org,
+                   crd/networkpolicies.crd.projectcalico.org,
+                   "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+          register: cluster_calico_crds
+          until: cluster_calico_crds.rc == 0
+          retries: "{{ cluster.settings.deployment.api_retries }}"
+          delay: "{{ cluster.settings.deployment.api_delay }}"
+          changed_when: false
+
+        - name: Publish networking and DNS permissions before joining workers
+          ansible.builtin.include_tasks: stages/k0s-stack.yml
+          loop: "{{ cluster.stacks.base }}"
+          loop_control:
+            loop_var: stack
+
+        - name: Retire declared native stacks after disabling their controller components
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ cluster.settings.deployment.retired_stack_directories }}"
+
+    - name: Install the selected workers in the prepared order
+      ansible.builtin.include_tasks: stages/k0s-node.yml
+      loop: "{{ runtime_cluster_order | reject('equalto', cluster.controller) }}"
+      loop_control:
+        loop_var: node_id
+
+    - name: Complete the managed network deployment through the controller
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].control_secrets.guest_admin.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].control_secrets.guest_admin.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].control_secrets.guest_admin.sudo_password }}"
+      block:
+        - name: Wait for each selected node to register
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, --for=create,
+                   "node/{{ item }}", "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+          loop: "{{ runtime_cluster_order }}"
+          changed_when: false
+
+        - name: Wait for the selected nodes after their physical BGP neighbours have joined
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, --for=condition=Ready,
+                   "node/{{ item }}", "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+          loop: "{{ runtime_cluster_order }}"
+          changed_when: false
+
+        - name: Hand over each router and wait before proceeding
+          ansible.builtin.include_tasks: stages/k0s-stack.yml
+          loop: "{{ cluster.stacks.routers }}"
+          loop_control:
+            loop_var: stack
+          when: stack.id in available_vms
+
+        - name: Find this project's previously published stacks
+          ansible.builtin.find:
+            paths: "{{ cluster.settings.paths.manifest_directory }}"
+            patterns:
+              - "{{ cluster.settings.deployment.stack_prefix }}-network"
+              - "{{ cluster.settings.deployment.stack_prefix }}-router-*"
+            file_type: directory
+          register: previous_stacks
+
+        - name: Remove obsolete stack directories for native resource pruning
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: >-
+            {{ previous_stacks.files | map(attribute='path') | difference(
+               (cluster.stacks.base + cluster.stacks.routers) | map(attribute='directory') | list) }}
+
+        - name: Wait for the declared system networking workloads
+          ansible.builtin.include_tasks: stages/system-ready.yml
+          loop: "{{ cluster.system_readiness }}"
+          loop_control:
+            loop_var: readiness
+
+    - name: Activate the managed main-router DNS on the hypervisor
+      ansible.builtin.include_tasks: stages/hypervisor-dns.yml

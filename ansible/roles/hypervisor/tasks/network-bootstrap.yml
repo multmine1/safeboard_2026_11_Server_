@@ -1,0 +1,36 @@
+- name: Read the controller's authenticated SSH profile before changing the address
+  ansible.builtin.command:
+    argv: [ssh, -G, -F, "{{ hypervisor_reconnect.ssh_config }}", "{{ hypervisor_bootstrap_alias }}"]
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: ansible_connection | default('ssh') != 'local'
+  changed_when: false
+  register: hypervisor_bootstrap_profile
+
+- name: Apply the bridge independently of the SSH session
+  ansible.builtin.command: netplan apply
+  async: "{{ hypervisor_reconnect.timeout }}"
+  poll: 0
+  register: hypervisor_netplan_apply
+
+- name: Point the controller alias at the prepared address
+  ansible.builtin.include_tasks: network-profile.yml
+  when: ansible_connection | default('ssh') != 'local'
+
+- name: Reset SSH after applying the bridge
+  ansible.builtin.meta: reset_connection
+
+- name: Wait for SSH through the updated controller profile
+  ansible.builtin.wait_for_connection:
+    delay: "{{ hypervisor_reconnect.delay }}"
+    timeout: "{{ hypervisor_reconnect.timeout }}"
+
+- name: Collect the native netplan result
+  ansible.builtin.async_status:
+    jid: "{{ hypervisor_netplan_apply.ansible_job_id }}"
+  register: hypervisor_netplan_result
+  until: hypervisor_netplan_result.finished
+  retries: "{{ hypervisor_reconnect.timeout }}"
+  delay: "{{ hypervisor_reconnect.delay }}"

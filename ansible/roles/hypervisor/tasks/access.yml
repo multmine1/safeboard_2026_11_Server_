@@ -1,0 +1,53 @@
+- name: Create the libvirt account
+  ansible.builtin.user:
+    name: "{{ hypervisor_user }}"
+    home: "{{ hypervisor_home }}"
+    groups: libvirt
+    append: true
+    shell: /bin/bash
+    password_lock: true
+
+- name: Create the server controller's own SSH key
+  ansible.builtin.user:
+    name: "{{ controller_user }}"
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_file: "{{ controller_identity_file }}"
+  register: hypervisor_controller_key
+
+- name: Authorize the Mac and server controllers
+  ansible.posix.authorized_key:
+    user: "{{ hypervisor_user }}"
+    key: |
+      {{ macos_public_key }}
+      {{ hypervisor_controller_key.ssh_public_key }}
+    exclusive: true
+
+- name: Apply the libvirt account SSH policy
+  ansible.builtin.import_tasks: sshd.yml
+
+- name: Configure the common alias on the server controller
+  ansible.builtin.blockinfile:
+    path: "{{ controller_access.ssh_config }}"
+    create: true
+    owner: "{{ controller_user }}"
+    group: "{{ controller_user }}"
+    mode: '0600'
+    insertbefore: BOF
+    marker: "{{ controller_access.marker }}"
+    block: "{{ lookup('template', 'ssh.conf.j2') }}"
+  vars:
+    identity_file: "~/{{ controller_identity_file }}"
+    ssh_connections: "{{ hypervisor_connections[:1] }}"
+
+- name: Read the hypervisor's public host key
+  ansible.builtin.slurp:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+  register: hypervisor_host_key
+
+- name: Trust the server host key for its local controller
+  ansible.builtin.known_hosts:
+    path: "{{ controller_access.known_hosts }}"
+    name: "{{ hypervisor_address }}"
+    key: "{{ hypervisor_address }} {{ hypervisor_host_key.content | b64decode | trim }}"
+  become: false

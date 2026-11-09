@@ -1,0 +1,38 @@
+- name: Read running Registry clients and their prepared router paths
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/deployment.json
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/applied.json
+  tasks:
+    - name: Read the current guest and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+- name: Distribute the public Registry trust anchor
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  become: true
+  vars:
+    cluster: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../configs/generated/k0s/cluster.json') | from_json }}"
+  tasks:
+    - name: Configure declared running reachable Registry clients
+      when: registry_trust is defined and inventory_hostname in hostvars['localhost'].available_vms
+      block:
+        - name: Read this client's encrypted administrator
+          ansible.builtin.set_fact:
+            client_credentials: "{{ {'guest_admin': vault_store.guests[inventory_hostname]} }}"
+          no_log: true
+
+        - name: Configure trust through the verified administrator
+          ansible.builtin.include_tasks: stages/registry-trust.yml
+          vars:
+            settings: "{{ cluster.settings }}"
+            ansible_user: "{{ access.admin_user }}"
+            ansible_private_key: "{{ client_credentials.guest_admin.private_key }}"
+            ansible_private_key_passphrase: "{{ client_credentials.guest_admin.key_passphrase }}"
+            ansible_become_password: "{{ client_credentials.guest_admin.sudo_password }}"

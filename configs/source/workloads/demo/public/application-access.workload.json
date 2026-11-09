@@ -1,0 +1,27 @@
+{
+  "name": "application-access",
+  "vm": "51ca2996-3113-5182-84d3-56bc448f55a8",
+  "enabled": true,
+  "secrets": {
+    "registry-pull": {
+      "provider": "vault"
+    },
+    "application-ca": {
+      "provider": "ca"
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "application"
+      },
+      "imagePullSecrets": [
+        {
+          "name": "registry-pull"
+        }
+      ]
+    }
+  ]
+}

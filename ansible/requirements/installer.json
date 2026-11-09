@@ -1,0 +1,143 @@
+{
+  "snapshot": "20261109T000000Z",
+  "artifacts": [
+    {
+      "name": "grub-efi-amd64-signed",
+      "version": "1+2.12+9+deb13u2",
+      "url": "https://snapshot.debian.org/archive/debian/20261109T000000Z/pool/main/g/grub-efi-amd64-signed/grub-efi-amd64-signed_1+2.12+9+deb13u2_amd64.deb",
+      "filename": "grub-efi-amd64-signed_1+2.12+9+deb13u2_amd64.deb",
+      "checksum": "sha256:da8bb31308a3682a7d9343fc42bf7f603ad85bb5483eeb3ece23e2f1be2e9bbd"
+    },
+    {
+      "name": "shim-helpers-amd64-signed",
+      "version": "1+16.1+2~deb13u1",
+      "url": "https://snapshot.debian.org/archive/debian/20261109T000000Z/pool/main/s/shim-helpers-amd64-signed/shim-helpers-amd64-signed_1+16.1+2~deb13u1_amd64.deb",
+      "filename": "shim-helpers-amd64-signed_1+16.1+2~deb13u1_amd64.deb",
+      "checksum": "sha256:7e950d75d5a40ecc0a99f727452ce35780b47a04d9a2cc3b1ff7c2bb316c033e"
+    },
+    {
+      "name": "shim-signed",
+      "version": "1.51~1+deb13u1+16.1-2~deb13u1",
+      "url": "https://snapshot.debian.org/archive/debian/20261109T000000Z/pool/main/s/shim-signed/shim-signed_1.51~1+deb13u1+16.1-2~deb13u1_amd64.deb",
+      "filename": "shim-signed_1.51~1+deb13u1+16.1-2~deb13u1_amd64.deb",
+      "checksum": "sha256:3c802fa303c0e6bf126adee74028d1042e3120360d159c2c05181dc9b2f61005"
+    },
+    {
+      "name": "kernel",
+      "url": "https://snapshot.debian.org/archive/debian/20261109T000000Z/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux",
+      "filename": "linux",
+      "checksum": "sha256:2b2358b37674d2505350528875bb17afae2a36522a9e8a9417eaca65a7da0e08"
+    },
+    {
+      "name": "initrd",
+      "url": "https://snapshot.debian.org/archive/debian/20261109T000000Z/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz",
+      "filename": "initrd.gz",
+      "checksum": "sha256:57303d157cffce3fa402301667fbc9b2280aa7372082b081e777375ae49da5f2"
+    }
+  ],
+  "preseed": {
+    "d-i": {
+      "debian-installer/locale": {
+        "type": "string",
+        "value": "en_US.UTF-8"
+      },
+      "keyboard-configuration/xkb-keymap": {
+        "type": "select",
+        "value": "us"
+      },
+      "netcfg/choose_interface": {
+        "type": "select",
+        "value": "auto"
+      },
+      "netcfg/get_domain": {
+        "type": "string",
+        "value": ""
+      },
+      "netcfg/disable_autoconfig": {
+        "type": "boolean",
+        "value": "true"
+      },
+      "netcfg/confirm_static": {
+        "type": "boolean",
+        "value": "true"
+      },
+      "mirror/country": {
+        "type": "string",
+        "value": "manual"
+      },
+      "mirror/http/hostname": {
+        "type": "string",
+        "value": "snapshot.debian.org"
+      },
+      "mirror/http/directory": {
+        "type": "string",
+        "value": "/archive/debian/20261109T000000Z"
+      },
+      "mirror/http/proxy": {
+        "type": "string",
+        "value": ""
+      },
+      "mirror/suite": {
+        "type": "string",
+        "value": "trixie"
+      },
+      "passwd/root-login": {
+        "type": "boolean",
+        "value": "false"
+      },
+      "passwd/user-password-crypted": {
+        "type": "password",
+        "value": "!"
+      },
+      "time/zone": {
+        "type": "string",
+        "value": "Etc/UTC"
+      },
+      "base-installer/kernel/image": {
+        "type": "string",
+        "value": "linux-image-amd64"
+      },
+      "pkgsel/include": {
+        "type": "string",
+        "value": "python3 sudo openssh-server network-manager netplan.io systemd-resolved parted e2fsprogs dosfstools ca-certificates"
+      },
+      "grub-installer/only_debian": {
+        "type": "boolean",
+        "value": "true"
+      },
+      "finish-install/reboot_in_progress": {
+        "type": "note",
+        "value": ""
+      },
+      "apt-setup/services-select": {
+        "type": "multiselect",
+        "value": ""
+      },
+      "apt-setup/non-free-firmware": {
+        "type": "boolean",
+        "value": "true"
+      },
+      "netcfg/target_network_config": {
+        "type": "select",
+        "value": "loopback"
+      }
+    },
+    "tasksel": {
+      "tasksel/first": {
+        "type": "multiselect",
+        "value": "ssh-server"
+      }
+    }
+  },
+  "firmware_catalog": {
+    "realtek": {
+      "package": "firmware-realtek",
+      "version": "20250410-2",
+      "url": "https://snapshot.debian.org/archive/debian/20261109T000000Z/pool/non-free-firmware/f/firmware-nonfree/firmware-realtek_20250410-2_all.deb",
+      "filename": "firmware-realtek_20250410-2_all.deb",
+      "checksum": "sha256:925755a9b0891c7dc39bbb73d28ab8f7193d37303b5022e8bc9d458b9b4aaa4e",
+      "source_directory": "usr/lib/firmware",
+      "destination_directory": "usr/lib/firmware"
+    }
+  }
+}

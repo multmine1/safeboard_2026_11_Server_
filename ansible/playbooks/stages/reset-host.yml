@@ -1,0 +1,97 @@
+- name: Remove only reviewed overlay resources on the hypervisor
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the remaining native network filter identities
+      ansible.builtin.command:
+        argv: [virsh, -c, "{{ reset.libvirt_uri }}", nwfilter-list]
+      become: true
+      register: reset_filters
+      changed_when: false
+      when: reset.nwfilter is defined
+
+    - name: Remove the declared interface filter after its VM consumers are gone
+      ansible.builtin.command:
+        argv: [virsh, -c, "{{ reset.libvirt_uri }}", nwfilter-undefine, "{{ reset.nwfilter.name }}"]
+      become: true
+      when:
+        - reset.nwfilter is defined
+        - >-
+          reset_filters.stdout_lines | map('trim') | map('split', none, 1) |
+          selectattr('1', 'defined') | selectattr('1', 'equalto', reset.nwfilter.name) | list | length > 0
+      changed_when: true
+
+    - name: Remove only the generated host files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      loop: "{{ reset.remove_files }}"
+      register: reset_host_files
+
+    - name: Reload systemd after removing the declared service files
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      become: true
+      when: reset_host_files.changed
+
+    - name: Remove the generated host service names
+      ansible.builtin.blockinfile:
+        path: "{{ reset.hosts_block.path }}"
+        marker: "{{ reset.hosts_block.marker }}"
+        state: absent
+      become: true
+      when: reset.hosts_block is defined
+
+    - name: Remove the server controller's generated libvirt SSH aliases
+      ansible.builtin.blockinfile:
+        path: "{{ reset.controller_access.ssh_config }}"
+        marker: "{{ reset.controller_access.marker }}"
+        state: absent
+
+    - name: Remove only the declared guest host key aliases
+      ansible.builtin.known_hosts:
+        path: "{{ reset.controller_access.known_hosts }}"
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ reset.known_host_aliases }}"
+
+    - name: Unlink only the generated VM storage references
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      loop: "{{ reset.remove_links }}"
+
+    - name: Remove the reviewed VM directories and their remaining diagnostic artifacts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      loop: "{{ reset.volume_directories }}"
+
+    - name: Undefine only the reviewed host directory pools while keeping their filesystems
+      community.libvirt.virt_pool:
+        uri: "{{ reset.libvirt_uri }}"
+        name: "{{ item.name }}"
+        state: absent
+      become: true
+      loop: "{{ reset.platform_pools }}"
+
+    - name: Release only the declared backup access before deleting its account
+      ansible.builtin.import_tasks: reset-backup-access.yml
+      when: reset.backup_repository_access is defined
+
+    - name: Remove only the declared project backup repository after stopping its writers
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      loop: "{{ reset.remove_directories }}"
+
+    - name: Remove the prepared service accounts after releasing their data
+      ansible.builtin.import_tasks: reset-service-accounts.yml
+
+    - name: Remove the disposable account after releasing its sessions
+      ansible.builtin.import_tasks: reset-account.yml

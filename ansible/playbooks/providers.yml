@@ -1,0 +1,47 @@
+- name: Install the pinned providers in the native local mirror
+  hosts: hypervisors
+  become: false
+  gather_facts: false
+  vars_files:
+    - ../../tofu/requirements/providers.json
+  vars:
+    controller_tools: "{{ controller_project_directory }}/environment/.tools"
+  tasks:
+    - name: Create the mirror and native discovery directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0750'
+      loop: >-
+        {{ [controller_provider_mirror, controller_provider_search_path | dirname,
+            controller_tools ~ '/tofu/archives'] + provider_packages | map(attribute='source') |
+            map('regex_replace', '^', controller_provider_mirror ~ '/') | list }}
+
+    - name: Download the official pinned provider archives
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        checksum: "{{ item.checksum }}"
+        dest: "{{ controller_tools }}/tofu/archives/{{ item.archive }}"
+        mode: '0644'
+      loop: "{{ provider_packages }}"
+
+    - name: Create the native platform package directories
+      ansible.builtin.file:
+        path: "{{ controller_provider_mirror }}/{{ item.source }}/{{ item.version }}/{{ item.platform }}"
+        state: directory
+        mode: '0750'
+      loop: "{{ provider_packages }}"
+
+    - name: Extract the official packages using the existing CMake archive tool
+      ansible.builtin.command:
+        argv: ["{{ controller_tools }}/anaconda/envs/skeleton/bin/cmake", -E, tar, xf,
+               "{{ controller_tools }}/tofu/archives/{{ item.archive }}"]
+        chdir: "{{ controller_provider_mirror }}/{{ item.source }}/{{ item.version }}/{{ item.platform }}"
+        creates: "{{ controller_provider_mirror }}/{{ item.source }}/{{ item.version }}/{{ item.platform }}/terraform-provider-libvirt_v{{ item.version }}"
+      loop: "{{ provider_packages }}"
+
+    - name: Expose the mirror through the native OpenTofu search directory
+      ansible.builtin.file:
+        src: "{{ controller_provider_mirror }}"
+        dest: "{{ controller_provider_search_path }}"
+        state: link

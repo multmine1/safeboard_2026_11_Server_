@@ -1,0 +1,25 @@
+- name: Preserve the authenticated host key lookup name
+  ansible.builtin.set_fact:
+    hypervisor_bootstrap_old_hostname: >-
+      {{ hypervisor_bootstrap_profile.stdout_lines | select('match', '^hostname ') | first | split | last }}
+    hypervisor_bootstrap_trust_name: >-
+      {{ ((hypervisor_bootstrap_profile.stdout_lines | select('match', '^hostkeyalias (?!none$)') | list) +
+          (hypervisor_bootstrap_profile.stdout_lines | select('match', '^hostname ') | list)) | first | split | last }}
+
+- name: Update only the controller alias address and retain its existing authentication settings
+  ansible.builtin.blockinfile:
+    path: "{{ hypervisor_reconnect.ssh_config }}"
+    insertbefore: BOF
+    marker: "{{ hypervisor_reconnect.marker }}"
+    backup: true
+    validate: "ssh -G -F %s {{ hypervisor_bootstrap_alias }}"
+    block: |
+      Host {{ hypervisor_bootstrap_alias }}
+          HostName {{ hypervisor_reconnect.address }}
+          HostKeyAlias {{ hypervisor_bootstrap_trust_name }}
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: hypervisor_bootstrap_old_hostname != hypervisor_reconnect.address
+  register: hypervisor_bootstrap_ssh_config

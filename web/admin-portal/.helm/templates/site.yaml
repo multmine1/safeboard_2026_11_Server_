@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- toYaml .Values.podLabels | nindent 8 }}
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: web
+          image: {{ required "Use the CI-published immutable image" .Values.image.ref | quote }}
+          ports:
+            - {name: https, containerPort: {{ .Values.service.port }}}
+          env:
+            - {name: PORTAL_HTTPS_PORT, value: {{ .Values.service.port | quote }}}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: https, scheme: HTTPS}
+          livenessProbe:
+            httpGet: {path: /healthz, port: https, scheme: HTTPS}
+          volumeMounts:
+            - {name: temporary, mountPath: /tmp}
+            - {name: navigation, mountPath: /etc/portal/navigation, readOnly: true}
+            - {name: tls, mountPath: /etc/portal/tls, readOnly: true}
+            - {name: authentication, mountPath: /etc/portal/auth, readOnly: true}
+      volumes:
+        - {name: temporary, emptyDir: {}}
+        - {name: navigation, configMap: {name: {{ .Values.navigationConfigMap }}}}
+        - {name: tls, secret: {secretName: {{ .Values.tlsSecret }}, defaultMode: 288}}
+        - {name: authentication, secret: {secretName: {{ .Values.authSecret }}, defaultMode: 288}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  externalIPs:
+    {{- toYaml .Values.service.externalIPs | nindent 4 }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - {name: https, port: {{ .Values.service.port }}, targetPort: https}

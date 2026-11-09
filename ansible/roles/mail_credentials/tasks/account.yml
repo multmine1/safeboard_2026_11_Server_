@@ -1,0 +1,22 @@
+- name: Generate only the missing account password in memory
+  ansible.builtin.set_fact:
+    mail_credentials_account_password: >-
+      {{ lookup('ansible.builtin.password', '/dev/null',
+           length=mail_credentials_plan.password_length, chars=['ascii_letters', 'digits']) }}
+  no_log: true
+
+- name: Hash the new password with the existing native OpenSSL
+  ansible.builtin.command:
+    argv: [openssl, passwd, '-6', '-stdin']
+    stdin: "{{ mail_credentials_account_password }}"
+  register: mail_credentials_account_hash
+  changed_when: false
+  no_log: true
+
+- name: Retain this account without replacing existing identities
+  ansible.builtin.set_fact:
+    mail_credentials_store: >-
+      {{ mail_credentials_store | combine({'accounts': {mail_credentials_account.value.name: {
+           'password': mail_credentials_account_password,
+           'password_hash': mail_credentials_account_hash.stdout}}}, recursive=true) }}
+  no_log: true

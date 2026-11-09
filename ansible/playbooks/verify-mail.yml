@@ -1,0 +1,98 @@
+- name: Verify deployed mail transport and account isolation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/deployment.json
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/applied.json
+  vars:
+    project_root: "{{ playbook_dir }}/../.."
+  tasks:
+    - name: Read the prepared application and mail acceptance settings
+      ansible.builtin.include_vars:
+        file: "{{ project_root }}/{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: configs/generated/k0s/applications/deployment.json, name: apps}
+        - {file: configs/generated/k0s/applications/stalwart/credentials.json, name: mail_plan}
+        - {file: configs/generated/ansible/local-access.json, name: local_access}
+        - {file: k0s/tests/mail.json, name: mail_check}
+
+    - name: Select the declared probe VM from the prepared workload
+      ansible.builtin.set_fact:
+        mail_probe_vm: "{{ apps.applications[mail_check.probe_application].vm }}"
+
+    - name: Read actual VM and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+    - name: Require the declared mail dependencies and probe path
+      ansible.builtin.assert:
+        that:
+          - mail_probe_vm in available_vms
+          - apps.applications[mail_check.application].required_vms | difference(available_vms) | length == 0
+
+    - name: Bind ready endpoints and account values only in memory
+      ansible.builtin.set_fact:
+        mail_probe_access: "{{ vault_store.guests[mail_probe_vm] }}"
+        mail_probe_configuration: >-
+          {{ mail_check | combine({
+             'ca': vault_store.pki.ca.certificate,
+             'message_id_domain': local_access.forwards[mail_check.inbound_service].remote_name,
+             'sender_address': mail_plan.addresses[mail_check.sender],
+             'sender_password': vault_store.mail.accounts[mail_check.sender].password,
+             'recipient_address': mail_plan.addresses[mail_check.recipient],
+             'recipient_password': vault_store.mail.accounts[mail_check.recipient].password,
+             'smtp': {'host': hostvars[mail_probe_vm].connections[mail_check.smtp_service].fqdn,
+                      'port': hostvars[mail_probe_vm].connections[mail_check.smtp_service].port},
+             'imap': {'host': hostvars[mail_probe_vm].connections[mail_check.imap_service].fqdn,
+                      'port': hostvars[mail_probe_vm].connections[mail_check.imap_service].port}}) }}
+        mail_relay_configuration: >-
+          {{ mail_check | combine({
+             'recipient_address': mail_plan.addresses[mail_check.recipient],
+             'inbound': {'host': local_access.forwards[mail_check.inbound_service].remote_name,
+                         'port': local_access.forwards[mail_check.inbound_service].remote_port}}) }}
+      no_log: true
+
+    - name: Send and read one temporary message through the generated router paths
+      ansible.builtin.command:
+        argv: ["{{ hostvars[mail_probe_vm].ansible_python_interpreter }}", -c,
+               "{{ lookup('ansible.builtin.file', project_root ~ '/k0s/tests/mail_delivery.py') }}", delivery]
+        stdin: "{{ mail_probe_configuration | to_json }}"
+      delegate_to: "{{ mail_probe_vm }}"
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].mail_probe_vm].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].mail_probe_access.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].mail_probe_access.key_passphrase }}"
+      changed_when: false
+      failed_when: false
+      register: mail_delivery
+      no_log: true
+
+    - name: Report only public delivery observations
+      ansible.builtin.debug:
+        msg: "{{ mail_delivery.stdout | from_json }}"
+
+    - name: Require verified TLS delivery and the send-only account boundary
+      ansible.builtin.assert:
+        that: mail_delivery.rc == 0
+
+    - name: Check inbound recipients without submitting any external message
+      ansible.builtin.command:
+        argv: ["{{ controller.python }}", -c,
+               "{{ lookup('ansible.builtin.file', project_root ~ '/k0s/tests/mail_delivery.py') }}", relay]
+        stdin: "{{ mail_relay_configuration | to_json }}"
+      delegate_to: "{{ controller.admin_alias }}"
+      changed_when: false
+      failed_when: false
+      register: mail_relay
+
+    - name: Report the inbound SMTP boundary
+      ansible.builtin.debug:
+        msg: "{{ mail_relay.stdout | from_json }}"
+
+    - name: Require local inbound delivery without anonymous external relay
+      ansible.builtin.assert:
+        that: mail_relay.rc == 0

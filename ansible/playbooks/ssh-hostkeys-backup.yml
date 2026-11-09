@@ -1,0 +1,41 @@
+- name: Back up the SSH host identity into the shared Vault
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/sshd.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  vars_prompt:
+    - name: vault_password
+      prompt: Shared Vault password
+      private: true
+      confirm: true
+  tasks:
+    - name: Preserve the first host identity without replacing saved host keys
+      when: vault_store.ssh_host_keys | length == 0
+      block:
+        - name: Read the declared private and public host key files into memory
+          ansible.builtin.slurp:
+            src: "{{ item.path }}"
+          loop: "{{ sshd.backup.files }}"
+          register: hostkey_data
+          no_log: true
+
+        - name: Add the identity without changing the other Vault sections
+          ansible.builtin.set_fact:
+            vault_store: >-
+              {{ vault_store | combine({'ssh_host_keys': dict(
+                 hostkey_data.results | map(attribute='item.path') |
+                 zip(hostkey_data.results | map(attribute='content')))}) }}
+          no_log: true
+
+        - name: Save the complete shared Vault on the controller
+          ansible.builtin.include_role:
+            name: vault
+            tasks_from: write
+            apply:
+              delegate_to: localhost
+              become: false

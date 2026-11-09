@@ -1,0 +1,6 @@
+extra_vars:
+  vault_file: configs/vault.example.yml
+exclude_paths:
+  - playbooks/router-local.yml
+skip_list:
+  - no-handler

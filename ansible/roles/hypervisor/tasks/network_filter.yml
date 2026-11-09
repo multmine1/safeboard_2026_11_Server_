@@ -1,0 +1,31 @@
+- name: Create the network filter definition directory
+  ansible.builtin.file:
+    path: "{{ controller.nwfilter.path | dirname }}"
+    state: directory
+    mode: "{{ controller.nwfilter.directory_mode }}"
+
+- name: Read the existing network filter identities
+  ansible.builtin.command:
+    argv: [virsh, -c, "{{ controller.nwfilter.uri }}", nwfilter-list]
+  register: hypervisor_filters
+  changed_when: false
+
+- name: Retain the existing filter UUID
+  ansible.builtin.set_fact:
+    hypervisor_filter_uuid: >-
+      {{ hypervisor_filters.stdout_lines | map('trim') | map('split', none, 1) |
+         selectattr('1', 'defined') | selectattr('1', 'equalto', controller.nwfilter.name) |
+         map('first') | first | default('') }}
+
+- name: Render the declared built-in libvirt filter references
+  ansible.builtin.template:
+    src: nwfilter.xml.j2
+    dest: "{{ controller.nwfilter.path }}"
+    mode: "{{ controller.nwfilter.file_mode }}"
+  register: hypervisor_filter_definition
+
+- name: Define the persistent interface protection
+  ansible.builtin.command:
+    argv: [virsh, -c, "{{ controller.nwfilter.uri }}", nwfilter-define, "{{ controller.nwfilter.path }}"]
+  when: hypervisor_filter_definition.changed or not hypervisor_filter_uuid
+  changed_when: hypervisor_filter_definition.changed or not hypervisor_filter_uuid

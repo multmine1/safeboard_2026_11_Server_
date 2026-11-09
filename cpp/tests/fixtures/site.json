@@ -1,0 +1,280 @@
+{
+  "domain": "example.test",
+  "ipv4_pool": "10.80.0.0/16",
+  "network_prefix": 24,
+  "gateway_offset": 1,
+  "mac_prefix": "02",
+  "uplink": {
+    "bridge": "br-wan",
+    "address": "192.0.2.10/24",
+    "gateway": "192.0.2.1"
+  },
+  "hypervisor": {
+    "address": "192.0.2.2",
+    "ssh_alias": "host-bootstrap"
+  },
+  "management_sources": [
+    "192.0.2.2/32"
+  ],
+  "dns_upstreams": [
+    "192.0.2.1"
+  ],
+  "image": {
+    "url": "https://example.invalid/replace-with-a-pinned-cloud-image.qcow2",
+    "format": "qcow2",
+    "pool": "nvme"
+  },
+  "bootstrap_public_key": "ssh-ed25519 REPLACE_WITH_YOUR_PUBLIC_KEY",
+  "storage_root": "/srv/example-vms",
+  "storage_classes": [
+    "nvme",
+    "ssd",
+    "hd"
+  ],
+  "vmctl_home": "/home/vmctl",
+  "provider": {
+    "source": "dmacvicar/libvirt",
+    "version": "0.9.9",
+    "uri": "qemu+sshcmd://hypervisor/system",
+    "lock_file": "../../../tofu/requirements/libvirt.lock.hcl"
+  },
+  "defaults": {
+    "network": {
+      "autostart": true,
+      "port_options": {
+        "isolated": "yes"
+      }
+    },
+    "domain": {
+      "type": "kvm",
+      "memory_unit": "MiB",
+      "autostart": true,
+      "running": true,
+      "cpu": {
+        "mode": "host-passthrough"
+      },
+      "os": {
+        "type": "hvm",
+        "type_arch": "x86_64",
+        "type_machine": "q35",
+        "boot_devices": [
+          {
+            "dev": "hd"
+          }
+        ]
+      }
+    },
+    "nic": {
+      "model": {
+        "type": "virtio"
+      },
+      "filter_ref": {
+        "filter": "skeleton-l2"
+      }
+    },
+    "disk": {
+      "device": "disk",
+      "driver": {
+        "name": "qemu"
+      },
+      "target": {
+        "bus": "virtio"
+      }
+    },
+    "volume": {
+      "capacity_unit": "bytes",
+      "target": {
+        "format": {
+          "type": "qcow2"
+        }
+      }
+    },
+    "pool": {
+      "type": "dir",
+      "create": {
+        "build": true,
+        "start": true,
+        "autostart": true
+      }
+    },
+    "seed_disk": {
+      "device": "cdrom",
+      "driver": {
+        "name": "qemu",
+        "type": "raw"
+      },
+      "target": {
+        "dev": "sda",
+        "bus": "sata"
+      },
+      "read_only": true
+    },
+    "cloud_init": {
+      "disable_root": false,
+      "ssh_pwauth": false
+    },
+    "cloud_init_user": {
+      "lock_passwd": true
+    }
+  },
+  "services": {
+    "network": {
+      "path": "/etc/netplan/60-infrastructure.yaml",
+      "renderer": "networkd",
+      "interfaces": {
+        "lan": "lan0",
+        "wan": "wan0"
+      },
+      "remove_files": [
+        "/etc/netplan/50-cloud-init.yaml"
+      ]
+    },
+    "ssh": {
+      "port": 22,
+      "unit": "ssh",
+      "config_path": "/etc/ssh/sshd_config.d/60-infrastructure.conf",
+      "bootstrap_user": "root",
+      "admin_user": "admin",
+      "users": [
+        {
+          "name": "operator",
+          "groups": [
+            "sudo"
+          ],
+          "shell": "/bin/bash",
+          "password": "{{ guest_users.operator.password_hash }}",
+          "authorized_keys": [
+            "ssh-ed25519 fixture-human-key"
+          ]
+        }
+      ],
+      "bootstrap_options": {
+        "PasswordAuthentication": "no",
+        "KbdInteractiveAuthentication": "no",
+        "PubkeyAuthentication": "yes",
+        "PermitRootLogin": "prohibit-password"
+      },
+      "admin_options": {
+        "PasswordAuthentication": "no",
+        "KbdInteractiveAuthentication": "no",
+        "PubkeyAuthentication": "yes",
+        "PermitRootLogin": "no"
+      },
+      "transport": "ssh",
+      "gateway": "direct"
+    },
+    "dns": {
+      "port": 53,
+      "unit": "coredns",
+      "corefile_path": "/etc/coredns/Corefile",
+      "zones_directory": "/etc/coredns/zones",
+      "ttl": 60,
+      "soa_mailbox": "hostmaster.example.test.",
+      "soa_refresh": 3600,
+      "soa_retry": 600,
+      "soa_expire": 86400,
+      "soa_minimum": 60
+    },
+    "firewall": {
+      "packages": [
+        "nftables"
+      ],
+      "path": "/etc/nftables.conf",
+      "table": "infrastructure",
+      "unit": "nftables",
+      "policy": {
+        "input": "drop",
+        "forward": "drop",
+        "output": "drop"
+      },
+      "internet_exclusions": [
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.0.2.0/24",
+        "224.0.0.0/4",
+        "240.0.0.0/4"
+      ],
+      "inter_network_snat": false,
+      "validate": "nft -c -f %s"
+    },
+    "guest_sysctl": {
+      "net.ipv6.conf.all.disable_ipv6": 1,
+      "net.ipv6.conf.default.disable_ipv6": 1,
+      "net.ipv4.conf.all.accept_redirects": 0,
+      "net.ipv4.conf.default.accept_redirects": 0
+    },
+    "router_sysctl": {
+      "net.ipv4.ip_forward": 1,
+      "net.ipv4.conf.all.send_redirects": 0,
+      "net.ipv4.conf.default.send_redirects": 0
+    },
+    "router_interface_sysctl": {
+      "send_redirects": 0
+    },
+    "router_packages": [
+      "coredns"
+    ],
+    "dns_resolver": {
+      "path": "/etc/resolv.conf",
+      "local_address": "127.0.0.1",
+      "disable_units": [
+        "systemd-resolved"
+      ]
+    },
+    "hypervisor": {
+      "nwfilter": {
+        "uri": "qemu:///system",
+        "path": "/var/lib/skeleton/hypervisor/nwfilter.xml",
+        "references": [
+          "no-mac-spoofing",
+          "no-arp-spoofing"
+        ],
+        "directory_mode": "0755",
+        "file_mode": "0644"
+      },
+      "admin_alias": "host-bootstrap"
+    },
+    "guest": {
+      "file_mode": "0644",
+      "directory_mode": "0755",
+      "sysctl_file": "/etc/sysctl.d/60-infrastructure.conf",
+      "python": "/usr/bin/python3"
+    }
+  },
+  "profiles": {
+    "router": {
+      "packages": []
+    },
+    "postgres": {
+      "packages": [
+        "postgresql"
+      ]
+    },
+    "application": {
+      "packages": []
+    },
+    "demo": {
+      "packages": [
+        "ufw"
+      ],
+      "ufw": {
+        "state": "enabled",
+        "defaults": {
+          "incoming": "deny",
+          "outgoing": "deny",
+          "routed": "deny"
+        }
+      }
+    }
+  },
+  "assets": {
+    "router_apply": "../../../ansible/playbooks/router-local.yml",
+    "network_tasks": "../../../ansible/roles/network/tasks/main.yml",
+    "firewall_tasks": "../../../ansible/roles/network/tasks/firewall.yml",
+    "ufw_tasks": "../../../ansible/roles/network/tasks/ufw.yml",
+    "dns_rbac": "../../../k0s/requirements/router-rbac.json"
+  }
+}

@@ -1,0 +1,44 @@
+- name: Verify acceptance decisions without a live Nextcloud or Vault
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    nextcloud_verification:
+      canonical_url: https://cloud.example.test:443/
+      proxy_clients: [192.0.2.10/32, 198.51.100.0/26]
+      max_cron_age_seconds: 900
+    healthy_observations:
+      status: '{"installed":true,"maintenance":false,"needsDbUpgrade":false}'
+      self_http: '{"installed":true,"maintenance":false,"needsDbUpgrade":false}'
+      proxies: '["198.51.100.0/26","192.0.2.10/32"]'
+      canonical_url: https://cloud.example.test:443/
+      cron_mode: cron
+      cron_time: '1900000000'
+      clock: '1900000300'
+      apache_remoteip: '# Forwarded addresses are validated by Nextcloud.'
+    nextcloud_cron:
+      spec: {suspend: false}
+      status: {lastSuccessfulTime: '2030-03-17T17:46:40Z'}
+    acceptance_cases:
+      - name: healthy
+        overrides: {}
+        accepted: true
+      - name: stale_cron
+        overrides: {cron_time: '1899999000'}
+        accepted: false
+      - name: unbounded_proxy
+        overrides: {proxies: '["0.0.0.0/0"]'}
+        accepted: false
+      - name: apache_rewrites_before_validation
+        overrides: {apache_remoteip: "# Existing Apache configuration\nRemoteIPHeader X-Real-IP\nRemoteIPInternalProxy 10.0.0.0/8\n"}
+        accepted: false
+      - name: unavailable_frontend
+        overrides: {self_http: '{"installed":true,"maintenance":true,"needsDbUpgrade":false}'}
+        accepted: false
+  tasks:
+    - name: Verify each acceptance boundary
+      ansible.builtin.include_tasks: nextcloud-case.yml
+      loop: "{{ acceptance_cases }}"
+      loop_control:
+        loop_var: acceptance_case
+        label: "{{ acceptance_case.name }}"

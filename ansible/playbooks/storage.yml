@@ -1,0 +1,15 @@
+- name: Apply the declared hypervisor storage access
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Configure mounted storage and pool access
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: storage

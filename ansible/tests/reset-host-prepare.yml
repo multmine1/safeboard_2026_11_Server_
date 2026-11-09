@@ -1,0 +1,113 @@
+- name: Prepare only the unique host fixture
+  delegate_to: "{{ controller.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Refuse an existing account with the selected fixture name
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ reset_test_name }}"
+        fail_key: false
+      register: reset_test_existing_account
+
+    - name: Require an unused fixture account name
+      ansible.builtin.assert:
+        that: reset_test_existing_account.ansible_facts.getent_passwd[reset_test_name] is none
+
+    - name: Read any group with the selected fixture name
+      ansible.builtin.getent:
+        database: group
+        key: "{{ reset_test_name }}"
+        fail_key: false
+      register: reset_test_existing_group
+
+    - name: Require the private fixture group name to be unused
+      ansible.builtin.assert:
+        that: reset_test_existing_group.ansible_facts.getent_group[reset_test_name] is none
+
+    - name: Create only fixture directories under the isolated host root
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ reset.controller_user }}"
+        mode: '0700'
+      loop:
+        - "{{ reset_test_root }}"
+        - "{{ reset_test_root }}/volumes"
+        - "{{ reset_test_root }}/VMs"
+        - "{{ reset_test_root }}/archive"
+        - "{{ reset_test_root }}/archive/backups"
+
+    - name: Reproduce private backup ancestors owned by root
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: root
+        group: root
+        mode: '0700'
+      loop: "{{ reset.backup_repository_access.parents }}"
+
+    - name: Create a locked disposable account without interactive login
+      ansible.builtin.user:
+        name: "{{ reset_test_name }}"
+        home: "{{ reset.account.home }}"
+        shell: /usr/sbin/nologin
+      register: reset_test_user_created
+
+    - name: Create only a fixture backup repository owned by the disposable account
+      ansible.builtin.file:
+        path: "{{ reset.backup_repository_access.repository }}"
+        state: directory
+        owner: "{{ reset_test_name }}"
+        group: "{{ reset_test_user_created.group }}"
+        mode: '0700'
+
+    - name: Populate only fixture data and configuration
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "{{ item.path }}"
+        owner: "{{ item.owner | default(reset.controller_user) }}"
+        group: "{{ reset_test_user_created.group if item.owner is defined else omit }}"
+        mode: '0600'
+      loop:
+        - {path: "{{ reset_test_root }}/overlay", content: "remove this fixture overlay\n"}
+        - {path: "{{ reset_test_root }}/keep", content: "keep this unrelated fixture file\n"}
+        - path: "{{ reset.controller_access.ssh_config }}"
+          content: "Host keep-host\n# BEGIN reset-fixture\nHost managed-host\n# END reset-fixture\n"
+        - path: "{{ reset.backup_repository_access.repository }}/data"
+          content: "preserve these backup bytes\n"
+          owner: "{{ reset_test_name }}"
+        - path: "{{ reset.controller_access.known_hosts }}"
+          content: "{{ reset_test_trust }}"
+
+    - name: Give only the disposable account traversal on fixture backup ancestors
+      ansible.posix.acl:
+        path: "{{ item }}"
+        etype: user
+        entity: "{{ reset_test_name }}"
+        permissions: x
+        state: present
+      loop: "{{ reset.backup_repository_access.parents }}"
+
+    - name: Create only a fixture volume reference
+      ansible.builtin.file:
+        src: "{{ reset_test_root }}/volumes"
+        dest: "{{ reset_test_root }}/VMs/current"
+        state: link
+
+    - name: Define only the unique fixture directory pool
+      community.libvirt.virt_pool:
+        uri: "{{ reset.libvirt_uri }}"
+        name: "{{ reset_test_name }}"
+        command: define
+        xml: "<pool type='dir'><name>{{ reset_test_name }}</name><target><path>{{ reset_test_root }}/volumes</path></target></pool>"
+      register: reset_test_pool_created
+
+- name: Populate only the disposable controller trust file
+  ansible.builtin.copy:
+    content: "{{ reset_test_trust }}"
+    dest: "{{ reset.controller_known_hosts }}"
+    mode: '0600'
+
+- name: Read actual host fixture path metadata
+  ansible.builtin.import_tasks: reset-host-observe.yml

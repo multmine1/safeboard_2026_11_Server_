@@ -1,0 +1,12 @@
+- name: Match running domains to the managed VM identities
+  ansible.builtin.set_fact:
+    running_vm_ids: >-
+      {{ infrastructure.vms | dict2items |
+         selectattr('value.name', 'in', running_domains.list_vms) | map(attribute='key') | list }}
+    available_vms: []
+
+- name: Select only complete generated paths without recalculating routes
+  ansible.builtin.set_fact:
+    available_vms: "{{ available_vms + [item.key] }}"
+  loop: "{{ vm_dependencies | dict2items }}"
+  when: item.value | difference(running_vm_ids) | length == 0

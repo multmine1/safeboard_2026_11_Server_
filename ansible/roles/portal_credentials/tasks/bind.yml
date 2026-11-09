@@ -1,0 +1,41 @@
+- name: Select the portal's own username and password in memory
+  ansible.builtin.set_fact:
+    portal_credentials_identity:
+      username: "{{ vault_store.get('admin_portal', {}).get('username', portal_auth.username) }}"
+      password: >-
+        {{ vault_store.get('admin_portal', {}).get('password') or
+           lookup('ansible.builtin.password', '/dev/null', length=portal_auth.password_length,
+                  chars=['ascii_letters', 'digits']) }}
+  no_log: true
+
+- name: Require an unambiguous native htpasswd username
+  ansible.builtin.assert:
+    that:
+      - portal_credentials_identity.username | length > 0
+      - "':' not in portal_credentials_identity.username"
+      - >-
+        '\n' not in portal_credentials_identity.username
+  no_log: true
+
+- name: Retain an existing verifier when the password and policy match
+  ansible.builtin.set_fact:
+    portal_credentials_hash: >-
+      {{ portal_credentials_identity.password | bcrypt_password_hash(
+           vault_store.get('admin_portal', {}).get('password_hash', ''), portal_auth.bcrypt_rounds) }}
+  no_log: true
+
+- name: Format the native authentication file with its final newline
+  ansible.builtin.set_fact:
+    portal_credentials_secret:
+      type: Opaque
+      stringData:
+        htpasswd: |
+          {{ portal_credentials_identity.username }}:{{ portal_credentials_hash }}
+  no_log: true
+
+- name: Bind only the portal credentials and its native authentication Secret # noqa var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    vault_store: >-
+      {{ vault_store | combine({'admin_portal': portal_credentials_identity | combine({'password_hash': portal_credentials_hash}),
+           'applications': {portal_plan.namespace: {'admin-portal-auth': portal_credentials_secret}}}, recursive=true) }}
+  no_log: true

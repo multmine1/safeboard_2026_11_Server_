@@ -1,0 +1,86 @@
+- name: Check the declared Netplan removal boundary without configuring any network
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Create isolated network files below the project tools directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ playbook_dir | dirname | dirname }}/environment/.tools"
+        prefix: network-retire-
+      register: network_test
+
+    - name: Exercise the production file retirement tasks
+      vars:
+        hypervisor_network:
+          path: "{{ network_test.path }}/current.yaml"
+          mode: '0600'
+          backup_directory: "{{ network_test.path }}/original"
+          backup_directory_mode: '0700'
+          retired_configurations: []
+      block:
+        - name: Create managed legacy and unrelated fixtures
+          ansible.builtin.copy:
+            content: "{{ item }}\n"
+            dest: "{{ network_test.path }}/{{ item }}"
+            mode: '0600'
+          loop: [current.yaml, old.yaml, unrelated.yaml]
+
+        - name: An empty declaration must not become a wildcard
+          ansible.builtin.include_tasks: ../roles/hypervisor/tasks/network-retire.yml
+
+        - name: Read the fixtures after the empty declaration
+          ansible.builtin.stat:
+            path: "{{ network_test.path }}/{{ item }}"
+          loop: [current.yaml, old.yaml, unrelated.yaml]
+          register: network_empty_paths
+
+        - name: Require all files to remain
+          ansible.builtin.assert:
+            that: network_empty_paths.results | rejectattr('stat.exists') | list | length == 0
+
+        - name: A wildcard covering the active file must be rejected before deletion
+          block:
+            - name: Request the invalid broad removal
+              ansible.builtin.include_tasks: ../roles/hypervisor/tasks/network-retire.yml
+              vars:
+                hypervisor_network:
+                  path: "{{ network_test.path }}/current.yaml"
+                  retired_configurations: ['*.yaml']
+
+            - name: Fail when the invalid request was accepted
+              ansible.builtin.fail:
+                msg: The managed Netplan file was not protected.
+          rescue:
+            - name: Require rejection by our active configuration boundary
+              ansible.builtin.assert:
+                that: ansible_failed_task.name == 'Keep the active Netplan file outside the removal set'
+
+        - name: Retire only the exact declared legacy file
+          ansible.builtin.include_tasks: ../roles/hypervisor/tasks/network-retire.yml
+          vars:
+            hypervisor_network:
+              path: "{{ network_test.path }}/current.yaml"
+              mode: '0600'
+              backup_directory: "{{ network_test.path }}/original"
+              backup_directory_mode: '0700'
+              retired_configurations: [old.yaml]
+
+        - name: Read the final owned and unrelated paths
+          ansible.builtin.stat:
+            path: "{{ network_test.path }}/{{ item }}"
+          loop: [current.yaml, old.yaml, unrelated.yaml, original/old.yaml]
+          register: network_final_paths
+
+        - name: Require the exact removal backup and unrelated file preservation
+          ansible.builtin.assert:
+            that:
+              - network_final_paths.results[0].stat.exists
+              - not network_final_paths.results[1].stat.exists
+              - network_final_paths.results[2].stat.exists
+              - network_final_paths.results[3].stat.exists
+      always:
+        - name: Remove only the isolated test directory
+          ansible.builtin.file:
+            path: "{{ network_test.path }}"
+            state: absent

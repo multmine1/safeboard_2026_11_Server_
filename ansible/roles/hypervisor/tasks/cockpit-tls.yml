@@ -1,0 +1,25 @@
+- name: Create the native Cockpit certificate directory
+  ansible.builtin.file:
+    path: "{{ hypervisor_cockpit.tls.certificate_file | dirname }}"
+    state: directory
+    mode: "{{ hypervisor_cockpit.directory_mode }}"
+
+- name: Install the Cockpit certificate chain
+  ansible.builtin.copy:
+    content: >-
+      {{ vault_store.pki.certificates[hypervisor_cockpit.tls.namespace ~ '/' ~
+         hypervisor_cockpit.tls.name].certificate ~ '\n' ~ vault_store.pki.ca.certificate }}
+    dest: "{{ hypervisor_cockpit.tls.certificate_file }}"
+    mode: "{{ hypervisor_cockpit.tls.certificate_mode }}"
+  notify: Restart Cockpit socket
+  no_log: true
+
+- name: Install the Cockpit server private key
+  ansible.builtin.copy:
+    content: >-
+      {{ vault_store.pki.certificates[hypervisor_cockpit.tls.namespace ~ '/' ~
+         hypervisor_cockpit.tls.name].private_key }}
+    dest: "{{ hypervisor_cockpit.tls.private_key_file }}"
+    mode: "{{ hypervisor_cockpit.tls.private_key_mode }}"
+  notify: Restart Cockpit socket
+  no_log: true

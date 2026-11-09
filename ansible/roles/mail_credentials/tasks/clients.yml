@@ -1,0 +1,10 @@
+- name: Bind each prepared account to its application's native Secret # noqa var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    vault_store: >-
+      {{ vault_store | combine({'applications': {
+           mail_credentials_apps.applications[item.application].namespace: {
+             item.secret: {'type': 'kubernetes.io/basic-auth', 'stringData': {
+               'username': mail_credentials_plan.addresses[item.account],
+               'password': mail_credentials_store.accounts[item.account].password}}}}}, recursive=true) }}
+  loop: "{{ mail_credentials_plan.clients }}"
+  no_log: true

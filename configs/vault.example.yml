@@ -1,0 +1,25 @@
+# Обезличенный шаблон: действующие значения сюда не записываются.
+# Создание зашифрованной локальной копии описано в README.md.
+vault_store:
+  # Заполнить через ansible-vault edit: пароль sudo гипервизора и ключ контроллера.
+  hypervisor_sudo_password: ''
+  # Полный OpenSSH-ключ вводится многострочным YAML-блоком |.
+  vmctl_private_key: ''
+  vmctl_key_passphrase: ''
+  guest_users:
+    # Заменить operator именем пользователя из локального instance.json.
+    operator:
+      password_hash: ''
+  # Секции этапов настройки; исходно пусты, существующие значения сохраняются.
+  guests: {}
+  ssh_host_keys: {}
+  applications: {}
+  registry_reader: {}
+  runner: {}
+  ci: {}
+  admin_portal: {}
+  mail: {}
+  backup: {}
+  pki:
+    ca: {}
+    certificates: {}

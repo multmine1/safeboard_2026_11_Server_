@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Приватный вход в сервисы инфраструктуры">
+  <title>Центр управления</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/portal.js" type="module"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/" aria-label="На главную"><span class="brand-mark">S</span> Server <span> / управление</span></a><span class="connection"><span></span> SSH SOCKS5</span></header>
+  <main>
+    <section class="intro">
+      <p class="eyebrow">ПРИВАТНЫЙ КОНТУР</p>
+      <h1>Всё под рукой.</h1>
+      <p class="lead">Почта, файлы, код и инфраструктура.<br>Один вход к вашим сервисам.</p>
+    </section>
+    <section aria-label="Навигация по сервисам">
+      <div class="toolbar">
+        <div class="filters" aria-label="Группы сервисов">
+          <button type="button" data-group="" aria-pressed="true">Все сервисы</button>
+          <button type="button" data-group="Работа" aria-pressed="false">Работа</button>
+          <button type="button" data-group="Наблюдаемость" aria-pressed="false">Наблюдаемость</button>
+          <button type="button" data-group="Управление" aria-pressed="false">Управление</button>
+        </div>
+        <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Найти сервис" aria-label="Найти сервис" autocomplete="off"></label>
+      </div>
+      <p id="status" class="status" role="status">Загрузка сервисов…</p>
+      <div id="services" class="grid"></div>
+    </section>
+    <aside class="access-note"><span aria-hidden="true">↗</span><p>Сервисы открываются отдельно. Для каждого сохраняется его собственная авторизация.</p></aside>
+  </main>
+  <footer><span>Центр управления</span><span>Доступ через защищённое SSH-подключение</span></footer>
+</body>
+</html>

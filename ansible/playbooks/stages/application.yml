@@ -1,0 +1,66 @@
+- name: Start this application's Secret change record
+  ansible.builtin.set_fact:
+    application_secrets_changed: false
+
+- name: Apply each ordinary worker's prepared firewall once before delivery
+  ansible.builtin.include_tasks: application-firewall.yml
+  when:
+    - application.vm not in (application_firewall_vms | default([]))
+    - hostvars[application.vm].network_owner is not defined
+
+- name: Publish managed Secrets before their consumers
+  ansible.builtin.include_tasks: application-secrets.yml
+  when: application.managed_secrets | length > 0
+
+- name: Require the application's declared secrets
+  ansible.builtin.command:
+    argv: "{{ [cluster.settings.paths.binary, 'kubectl', 'get', 'secret', '--namespace', application.namespace] + application.required_secrets }}"
+  when: application.required_secrets | length > 0
+  changed_when: false
+  no_log: true
+
+- name: Prepare the application's host storage and OS services
+  ansible.builtin.include_tasks: application-host.yml
+  when: application.guest | length > 0
+
+- name: Prepare the pinned chart archive
+  when: application.chart_archive | length > 0
+  block:
+    - name: Create the chart archive directory
+      ansible.builtin.file:
+        path: "{{ cluster.settings.paths.chart_directory }}"
+        state: directory
+        mode: "{{ cluster.settings.deployment.directory_mode }}"
+
+    - name: Cache the verified official chart archive
+      ansible.builtin.get_url:
+        url: "{{ application.chart_archive.url }}"
+        checksum: "{{ application.chart_archive.checksum }}"
+        dest: "{{ application.chart_archive.path }}"
+        mode: "{{ cluster.settings.deployment.file_mode }}"
+
+- name: Publish the native workload resources
+  ansible.builtin.include_tasks: k0s-stack.yml
+  when: application.stack.files | length > 0
+  vars:
+    stack: "{{ application.stack }}"
+
+- name: Wait for the prepared application resources
+  ansible.builtin.include_tasks: application-ready.yml
+  loop: "{{ application.readiness }}"
+  loop_control:
+    loop_var: readiness
+
+- name: Require the chart operation to complete as well as its workload rollout
+  ansible.builtin.command:
+    argv: ["{{ helm.binary }}", status, "{{ application_name }}", --namespace,
+           "{{ application.namespace }}", -o, json]
+  environment:
+    KUBECONFIG: "{{ secret_plan.settings.kubeconfig }}"
+  register: application_release
+  until: application_release.rc == 0 and (application_release.stdout | from_json).info.status == 'deployed'
+  retries: "{{ cluster.settings.deployment.api_retries }}"
+  delay: "{{ cluster.settings.deployment.api_delay }}"
+  when: application.has_chart
+  changed_when: false
+  no_log: true

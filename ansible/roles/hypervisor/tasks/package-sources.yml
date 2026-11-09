@@ -1,0 +1,6 @@
+- name: Apply the source-selected native package repositories
+  ansible.builtin.copy:
+    content: "{{ item.value.content }}"
+    dest: "{{ item.key }}"
+    mode: "{{ item.value.mode }}"
+  loop: "{{ hypervisor_package_files | default({}) | dict2items }}"

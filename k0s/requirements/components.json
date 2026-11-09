@@ -1,0 +1,448 @@
+{
+  "cloudnative-pg": {
+    "chart_archive": {
+      "url": "https://github.com/cloudnative-pg/charts/releases/download/cloudnative-pg-v0.29.1/cloudnative-pg-0.29.1.tgz",
+      "checksum": "sha256:b53d3991fe84bcf38767e7702cae78666265427a127a26fff168ab4207d2b1df"
+    },
+    "chart": {
+      "version": "0.29.1",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "image": {
+          "tag": "1.30.1@sha256:b0f9805bd5f98592e7320b5ea624dd10a7a6ef8e477df5650655c94f0b242497"
+        }
+      }
+    }
+  },
+  "sealed-secrets": {
+    "chart_archive": {
+      "url": "https://github.com/bitnami/sealed-secrets/releases/download/helm-v2.22.0/sealed-secrets-2.22.0.tgz",
+      "checksum": "sha256:1ed23bb224652aa6c8477979d4bddccd207205b27b12b120f62f360890c80606"
+    },
+    "chart": {
+      "version": "2.22.0",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "image": {
+          "tag": "0.41.2@sha256:e3b9a3246139c64e1a41c665721396954cf3942e3d7c9fa242868fecaa886db9"
+        }
+      }
+    },
+    "compute": {
+      "main": {
+        "fixed_replicas": 1
+      }
+    }
+  },
+  "nginx-ingress": {
+    "chart_archive": {
+      "url": "https://helm.nginx.com/stable/nginx-ingress-2.8.0.tgz",
+      "checksum": "sha256:a48a61321273160cd4f58ff4c4de9aed169097e1203de1f2ca1579c0236c6703"
+    },
+    "chart": {
+      "version": "2.8.0",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "controller": {
+          "image": {
+            "digest": "sha256:fdb0351be1b76ed6ba018c49cba03c5e656725db507553f42b78ed372c957547"
+          }
+        }
+      }
+    }
+  },
+  "local-path-provisioner": {
+    "chart": {
+      "chartName": "oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner@sha256:81033683ce790e593524b2105945ee0d81bf6608f0c85eb5e0c1082cc74ff03d",
+      "version": "0.0.37",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "image": {
+          "tag": "v0.0.37@sha256:c3f2c60ee2490eb83ac00101d7e239fd8c20a5b8b4038e2dfc36a7e66fe99c08"
+        },
+        "helperImage": {
+          "tag": "1.37.0@sha256:66a6306db78bf2dbf3487f293aa8d6990d8e506fdffab9cc43fe422becf886e4"
+        }
+      }
+    }
+  },
+  "postgresql": {
+    "image": "ghcr.io/cloudnative-pg/postgresql:17.11-system-trixie@sha256:314285da12534860b0c7693a4a9b896212c765c80c6b13ba82f29ba39212a58d"
+  },
+  "forgejo": {
+    "chart": {
+      "chartName": "oci://code.forgejo.org/forgejo-helm/forgejo@sha256:73accaef0604d6e701a7b141e71a8b9a007c1475807240403d8bca0aeda24b74",
+      "version": "17.3.2",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "image": {
+          "tag": "17.0.1",
+          "digest": "sha256:b76f32add7267b2a791ea04014a441cf9d086050e7c0250feec9fb7066e9828f",
+          "rootless": true
+        },
+        "podSecurityContext": {
+          "fsGroup": 1000,
+          "fsGroupChangePolicy": "OnRootMismatch"
+        },
+        "persistence": {
+          "create": false
+        },
+        "initContainers": {},
+        "deployment": {
+          "env": [
+            {
+              "name": "PGSSLROOTCERT",
+              "value": "/postgres-ca/ca.crt"
+            }
+          ]
+        },
+        "extraContainerVolumeMounts": [
+          {
+            "name": "postgres-ca",
+            "mountPath": "/postgres-ca",
+            "readOnly": true
+          },
+          {
+            "name": "web-tls",
+            "mountPath": "/web-tls",
+            "readOnly": true
+          }
+        ],
+        "extraInitVolumeMounts": [
+          {
+            "name": "postgres-ca",
+            "mountPath": "/postgres-ca",
+            "readOnly": true
+          },
+          {
+            "name": "web-tls",
+            "mountPath": "/web-tls",
+            "readOnly": true
+          }
+        ],
+        "gitea": {
+          "admin": {
+            "passwordMode": "initialOnlyNoReset"
+          },
+          "config": {
+            "database": {
+              "DB_TYPE": "postgres",
+              "SSL_MODE": "verify-full"
+            },
+            "server": {
+              "DISABLE_SSH": true,
+              "PROTOCOL": "https",
+              "CERT_FILE": "/web-tls/tls.crt",
+              "KEY_FILE": "/web-tls/tls.key"
+            },
+            "service": {
+              "DISABLE_REGISTRATION": true
+            }
+          },
+          "readinessProbe": {
+            "httpGet": {
+              "scheme": "HTTPS"
+            }
+          }
+        },
+        "service": {
+          "http": {
+            "externalIPs": [],
+            "externalTrafficPolicy": "Local"
+          }
+        }
+      }
+    },
+    "compute": {
+      "main": {
+        "replicas": 1,
+        "containers": {
+          "main": {
+            "requests": {
+              "cpu_millicores": 100,
+              "ram_mib": 256
+            },
+            "limits": {
+              "cpu_millicores": 1000,
+              "ram_mib": 768
+            }
+          }
+        },
+        "init_containers": {
+          "setup": {
+            "requests": {
+              "cpu_millicores": 100,
+              "ram_mib": 128
+            },
+            "limits": {
+              "cpu_millicores": 500,
+              "ram_mib": 256
+            }
+          }
+        }
+      }
+    },
+    "patches": [
+      {
+        "op": "copy",
+        "from": "/context/compute/main/replicas",
+        "path": "/chart/values/replicaCount"
+      },
+      {
+        "op": "copy",
+        "from": "/context/compute/main/containers/main",
+        "path": "/chart/values/resources"
+      },
+      {
+        "op": "copy",
+        "from": "/context/compute/main/init_containers/setup",
+        "path": "/chart/values/initContainers/resources"
+      }
+    ]
+  },
+  "victoria-metrics-single": {
+    "chart_archive": {
+      "url": "https://github.com/VictoriaMetrics/helm-charts/releases/download/victoria-metrics-single-0.50.0/victoria-metrics-single-0.50.0.tgz",
+      "checksum": "sha256:051d1b19cdc05e80cf67faa7d5bb1b393353780256d1f7cd5cadb3c77e67b1dd"
+    },
+    "chart": {
+      "version": "0.50.0",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "server": {
+          "image": {
+            "tag": "v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df"
+          }
+        }
+      }
+    }
+  },
+  "victoria-logs-single": {
+    "chart_archive": {
+      "url": "https://github.com/VictoriaMetrics/helm-charts/releases/download/victoria-logs-single-0.13.11/victoria-logs-single-0.13.11.tgz",
+      "checksum": "sha256:8914e940faa7d1a01ca32fe489a2423755a35637a8ffc66b04b84ae8cea647b2"
+    },
+    "chart": {
+      "version": "0.13.11",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "server": {
+          "image": {
+            "tag": "v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d"
+          }
+        }
+      }
+    }
+  },
+  "victoria-metrics-alert": {
+    "chart_archive": {
+      "url": "https://github.com/VictoriaMetrics/helm-charts/releases/download/victoria-metrics-alert-0.52.1/victoria-metrics-alert-0.52.1.tgz",
+      "checksum": "sha256:5f977d4ff38acf408c1fbd112b941b874c37bab1785b21990afe667cda39dcf1"
+    },
+    "chart": {
+      "version": "0.52.1",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "server": {
+          "image": {
+            "tag": "v1.155.0@sha256:3256cba5ddaca5974eae6141105cec4ce37871f1c213f0a5c267ec0111bc68e1"
+          }
+        },
+        "alertmanager": {
+          "image": {
+            "tag": "v0.34.2@sha256:39d8bb3966c694a124428a3a88fbcffd40bd069129ecd47c059f8a3f17c55f3b"
+          }
+        }
+      }
+    }
+  },
+  "grafana": {
+    "chart_archive": {
+      "url": "https://github.com/grafana-community/helm-charts/releases/download/grafana-14.3.1/grafana-14.3.1.tgz",
+      "checksum": "sha256:f49f848a9d6b4ab626610c0726b7e2a057f6c10e662a090bf7b30452d42f7bd5"
+    },
+    "chart": {
+      "version": "14.3.1",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "plugins": [
+          "victoriametrics-logs-datasource@0.33.1"
+        ],
+        "image": {
+          "tag": "13.3.0",
+          "sha": "488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205"
+        }
+      }
+    }
+  },
+  "opentelemetry-collector": {
+    "chart_archive": {
+      "url": "https://github.com/open-telemetry/opentelemetry-helm-charts/releases/download/opentelemetry-collector-0.178.2/opentelemetry-collector-0.178.2.tgz",
+      "checksum": "sha256:4c9732611ab301e1d5532f62fa0c715c2c89765ee74f88ec1825601b3f172324"
+    },
+    "chart": {
+      "version": "0.178.2",
+      "forceUpgrade": false,
+      "timeout": "10m",
+      "values": {
+        "image": {
+          "digest": "sha256:7f22d2a6748110ffb6a59bc0df448bccbf501cdb667d610ede4c61d3863d5849"
+        }
+      }
+    }
+  },
+  "valkey": {
+    "image": "docker.io/valkey/valkey:8.1.11@sha256:8f836008e0986c36adf50da714c7060cf689dbb335f61fe077939d90fa650809"
+  },
+  "ci": {
+    "image": "docker.io/library/node:24-trixie@sha256:8c761eca2bf7eec965f946cf47b8090143cb41f45f2f8699af0cc0298d2d2d19",
+    "binaries": [
+      {
+        "url": "https://code.forgejo.org/forgejo/runner/releases/download/v13.2.1/forgejo-runner-13.2.1-linux-amd64",
+        "checksum": "sha256:bb369fe1ecb50fdc983c0b1d993f19b0920df6e5864511892b3cdbf16d858b34",
+        "cache": "/usr/local/bin/forgejo-runner"
+      },
+      {
+        "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+        "checksum": "sha256:551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+        "cache": "/var/cache/skeleton/gitleaks_8.30.1_linux_x64.tar.gz",
+        "directory": "/usr/local/bin",
+        "include": [
+          "gitleaks"
+        ]
+      },
+      {
+        "url": "https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz",
+        "checksum": "sha256:c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0",
+        "cache": "/var/cache/skeleton/trivy_0.76.1_Linux-64bit.tar.gz",
+        "directory": "/usr/local/bin",
+        "include": [
+          "trivy"
+        ]
+      },
+      {
+        "url": "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64",
+        "checksum": "sha256:424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa",
+        "cache": "/usr/local/bin/cosign"
+      },
+      {
+        "url": "https://tuf.werf.io/targets/releases/2.83.0/linux-amd64/bin/werf",
+        "checksum": "sha256:e8f31e97d9c2bb8674d6bd11d6aaf4d393c2a7016fb413b3af6defd46d37fc9a",
+        "cache": "/usr/local/bin/werf"
+      },
+      {
+        "url": "https://github.com/astral-sh/uv/releases/download/0.13.7/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "checksum": "sha256:c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83",
+        "cache": "/var/cache/skeleton/0.13.7-uv-linux-amd64.tar.gz",
+        "directory": "/usr/local/bin",
+        "include": [
+          "uv-x86_64-unknown-linux-gnu/uv"
+        ],
+        "extra_opts": [
+          "--strip-components=1"
+        ]
+      }
+    ],
+    "checkout_action": "https://data.forgejo.org/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "python_version": "3.13.18",
+    "api_token": {
+      "name": "platform-ci",
+      "scopes": [
+        "write:repository",
+        "write:package",
+        "write:user"
+      ]
+    },
+    "runner_registration": {
+      "ephemeral": false
+    },
+    "signing": {
+      "binary": "/usr/local/bin/cosign",
+      "password_length": 32,
+      "controller_validation": {
+        "url": "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-darwin-arm64",
+        "checksum": "sha256:9f9b8cd557cf2e5b3df3373a00baa005a86b02391e3e06dd0ce37b3a1533d3a4",
+        "binary": "environment/.tools/validation/cosign-3.1.4-darwin-arm64/cosign"
+      },
+      "configuration": {
+        "mediaType": "application/vnd.dev.sigstore.signingconfig.v0.2+json",
+        "rekorTlogConfig": {},
+        "tsaConfig": {}
+      }
+    }
+  },
+  "nextcloud": {
+    "chart_archive": {
+      "url": "https://github.com/nextcloud/helm/releases/download/nextcloud-9.4.1/nextcloud-9.4.1.tgz",
+      "checksum": "sha256:e3d768864800bcc23eb66e6f65cbf5f0545b1506cf8c65f55a91d21af3bad4bf"
+    },
+    "chart": {
+      "version": "9.4.1",
+      "forceUpgrade": false,
+      "timeout": "15m",
+      "values": {
+        "image": {
+          "tag": "35.0.2-apache@sha256:d88929dc8386420b8963f86cabb667fdaf733eef9dcf8fc98e226801a32c023c"
+        }
+      }
+    },
+    "apps": {
+      "mail": {
+        "version": "5.13.1",
+        "url": "https://github.com/nextcloud-releases/mail/releases/download/v5.13.1/mail-v5.13.1.tar.gz",
+        "sha256": "641dc4f9b48a800384d65da59d5a87df0e77b71d96a97aecfb9cd7e1e3b188c9"
+      }
+    }
+  },
+  "stalwart": {
+    "version": "1.0.3",
+    "image": "docker.io/stalwartlabs/stalwart:v1.0.3@sha256:73c684a84c24f5b4206ec266a8deb8986fe44a9f623997e07f084388d943c8bd",
+    "binaries": [
+      {
+        "url": "https://github.com/stalwartlabs/cli/releases/download/v1.0.14/stalwart-cli-x86_64-unknown-linux-gnu.tar.xz",
+        "checksum": "sha256:78584b238422b0201a7bd223ed95b3c1a7fb8735ad3fa8c884d818a66fd1bc65",
+        "cache": "/var/cache/skeleton/stalwart-cli-1.0.14.tar.xz",
+        "directory": "/usr/local/bin",
+        "include": [
+          "stalwart-cli-x86_64-unknown-linux-gnu/stalwart-cli"
+        ],
+        "extra_opts": [
+          "--strip-components=1"
+        ]
+      }
+    ]
+  },
+  "admin-portal": {
+    "base_image": "docker.io/library/nginx:1.30.6-alpine@sha256:583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311",
+    "auth": {
+      "username": "admin",
+      "password_length": 32,
+      "bcrypt_rounds": 12
+    },
+    "delivery": {
+      "repository": {
+        "name": "admin-portal",
+        "private": true,
+        "default_branch": "main",
+        "auto_init": true,
+        "description": "Private infrastructure service portal"
+      },
+      "release": "admin-portal-web",
+      "source_directory": "web/admin-portal",
+      "workflow_file": "delivery.yml",
+      "author": {
+        "name": "Infrastructure CI",
+        "email": "ci@localhost"
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+- name: Create the prepared configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ guest_plan.directory_mode }}"
+  loop: "{{ guest_plan.directories }}"
+
+- name: Disable the replaced services and automatic upgrade timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ guest_plan.disable_services | default([]) }}"
+
+- name: Remove superseded guest configuration
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ guest_plan.remove_files | default([]) }}"
+
+- name: Place the generated files
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ item.key }}"
+    mode: "{{ guest_plan.file_modes[item.key] | default(guest_plan.file_mode) }}"
+  loop: "{{ guest_plan.files | dict2items }}"
+  register: guest_files
+
+- name: Enable the declared services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: "{{ 'restarted' if guest_files.changed else 'started' }}"
+    enabled: true
+    daemon_reload: "{{ guest_files.changed }}"
+  loop: "{{ guest_plan.services }}"

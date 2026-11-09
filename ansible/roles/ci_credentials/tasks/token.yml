@@ -1,0 +1,58 @@
+- name: Verify the saved token against this Forgejo instance
+  ansible.builtin.uri:
+    url: "{{ forgejo_origin }}/api/v1/user"
+    headers: {Authorization: "token {{ ci_credentials_api_before.api_token }}"}
+    ca_path: "{{ forgejo_ca.path }}"
+    status_code: [200, 401]
+  when: ci_credentials_api_before.get('api_token', '') | length > 0
+  register: ci_credentials_token_identity
+  no_log: true
+
+- name: Require an existing token to belong to the declared administrator
+  ansible.builtin.assert:
+    that: ci_credentials_token_identity.json.login == forgejo_admin.username
+    fail_msg: The saved CI token belongs to another Forgejo account.
+  when: ci_credentials_token_identity.status | default(401) == 200
+  no_log: true
+
+- name: Select whether the API identity needs recovery
+  ansible.builtin.set_fact:
+    ci_credentials_token_missing: "{{ ci_credentials_token_identity.status | default(401) != 200 }}"
+  no_log: true
+
+- name: Retire only the declared token name when its secret is unavailable
+  ansible.builtin.uri:
+    url: "{{ forgejo_origin }}/api/v1/users/{{ forgejo_admin.username | urlencode }}/tokens/{{ ci_credentials_token_spec.name | urlencode }}"
+    method: DELETE
+    url_username: "{{ forgejo_admin.username }}"
+    url_password: "{{ forgejo_admin.password }}"
+    force_basic_auth: true
+    ca_path: "{{ forgejo_ca.path }}"
+    status_code: [204, 404]
+  when: ci_credentials_token_missing
+  register: ci_credentials_token_retired
+  changed_when: ci_credentials_token_retired.status == 204
+  no_log: true
+
+- name: Create the missing scoped API token using native Forgejo authentication
+  ansible.builtin.uri:
+    url: "{{ forgejo_origin }}/api/v1/users/{{ forgejo_admin.username | urlencode }}/tokens"
+    method: POST
+    url_username: "{{ forgejo_admin.username }}"
+    url_password: "{{ forgejo_admin.password }}"
+    force_basic_auth: true
+    ca_path: "{{ forgejo_ca.path }}"
+    body_format: json
+    body: "{{ ci_credentials_token_spec }}"
+    status_code: 201
+  when: ci_credentials_token_missing
+  register: ci_credentials_token_created
+  changed_when: true
+  no_log: true
+
+- name: Retain the recovered token only in controller memory
+  ansible.builtin.set_fact:
+    ci_credentials_api: >-
+      {{ ci_credentials_api_before | combine({'api_token': ci_credentials_token_created.json.sha1})
+         if ci_credentials_token_missing else ci_credentials_api_before }}
+  no_log: true

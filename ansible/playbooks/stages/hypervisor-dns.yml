@@ -1,0 +1,18 @@
+- name: Use the main router DNS after its managed Pod is ready
+  become: true
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+    ansible_become_exe: "{{ controller.become_exe }}"
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Persist and apply the prepared route and router DNS
+      ansible.builtin.include_tasks: ../../roles/hypervisor/tasks/network.yml
+      vars:
+        hypervisor_runtime: true
+
+    - name: Record activation of the managed network
+      ansible.builtin.copy:
+        content: "demo\n"
+        dest: "{{ hypervisor_network.runtime_marker }}"
+        mode: "{{ hypervisor_file_mode }}"

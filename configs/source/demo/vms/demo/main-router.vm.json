@@ -1,0 +1,14 @@
+{
+  "id": "a92533cb-39f3-5354-a1f9-9eaf5af7d19f",
+  "name": "edge",
+  "type": "router",
+  "vcpu": 1,
+  "ram_mib": 2048,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 16
+    }
+  ]
+}

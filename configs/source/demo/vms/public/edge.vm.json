@@ -1,0 +1,14 @@
+{
+  "id": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+  "name": "edge",
+  "type": "edge",
+  "vcpu": 1,
+  "ram_mib": 1024,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 16
+    }
+  ]
+}

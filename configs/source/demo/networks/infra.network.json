@@ -1,0 +1,124 @@
+{
+  "id": "e037955f-cd13-5ad6-8a74-7deaaef7db62",
+  "name": "infra",
+  "members": [
+    "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+    "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+    "fbbe719d-3f0f-5156-bd28-c7764158d631",
+    "a5b90567-01b5-5f25-8917-81182a915a2f"
+  ],
+  "allow": [
+    {
+      "from": "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+      "to": "dfb90eb9-fd04-5ecd-bb5f-d3c021ae738d"
+    },
+    {
+      "from": "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+      "to": "ef989f98-23d7-5738-bdfb-8f8db3aef50d"
+    },
+    {
+      "from": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "to": "dfb90eb9-fd04-5ecd-bb5f-d3c021ae738d"
+    },
+    {
+      "from": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "to": "ef989f98-23d7-5738-bdfb-8f8db3aef50d"
+    },
+    {
+      "from": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "to": "7ba1b3f6-f664-5491-a974-482f666eb8c9"
+    },
+    {
+      "from": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "to": "36f49c6e-305a-59a7-b3b8-7d7c9774651f"
+    },
+    {
+      "from": "a5b90567-01b5-5f25-8917-81182a915a2f",
+      "to": "ef989f98-23d7-5738-bdfb-8f8db3aef50d"
+    },
+    {
+      "from": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+      "to": "hypervisor:host-metrics"
+    },
+    {
+      "from": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "to": "hypervisor:cockpit"
+    },
+    {
+      "from": "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+      "to": "3c76cb46-42c9-5f7c-9f1a-ba6abd6a8f3d"
+    },
+    {
+      "from": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "to": "c78d1fba-de24-5c85-a8a5-b9473fa1279a"
+    }
+  ],
+  "router": "c3d62da6-9b30-55dd-be7e-4db6c99485ac",
+  "exports": [
+    {
+      "id": "f7596def-7438-553b-8005-d3a64d9f4bfb",
+      "name": "artifacts",
+      "vm": "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+      "protocol": "tcp",
+      "port": 3000,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "dfb90eb9-fd04-5ecd-bb5f-d3c021ae738d",
+      "name": "infra-sql",
+      "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+      "protocol": "tcp",
+      "port": 15432,
+      "scope": "internal",
+      "target_port": 5432,
+      "sources": []
+    },
+    {
+      "id": "ef989f98-23d7-5738-bdfb-8f8db3aef50d",
+      "name": "infra-data",
+      "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+      "protocol": "tcp",
+      "port": 12049,
+      "scope": "internal",
+      "target_port": 2049,
+      "sources": []
+    },
+    {
+      "id": "7ba1b3f6-f664-5491-a974-482f666eb8c9",
+      "name": "metrics",
+      "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+      "protocol": "tcp",
+      "port": 8428,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "36f49c6e-305a-59a7-b3b8-7d7c9774651f",
+      "name": "logs",
+      "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+      "protocol": "tcp",
+      "port": 9428,
+      "scope": "uplink",
+      "sources": [
+        "hypervisor"
+      ]
+    },
+    {
+      "id": "dcec5614-e259-576b-aca6-f7ea19b3de3f",
+      "name": "grafana",
+      "vm": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+      "protocol": "tcp",
+      "port": 8443,
+      "scope": "uplink",
+      "target_port": 3000,
+      "sources": [
+        "hypervisor"
+      ]
+    }
+  ]
+}

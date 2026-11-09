@@ -1,0 +1,684 @@
+{
+  "name": "nextcloud",
+  "vm": "51ca2996-3113-5182-84d3-56bc448f55a8",
+  "enabled": true,
+  "component": "nextcloud",
+  "depends_on": [
+    "nextcloud-db",
+    "nfs-public",
+    "valkey"
+  ],
+  "required_secrets": [
+    "nextcloud-admin",
+    "nextcloud-postgres",
+    "nextcloud-cache",
+    "nextcloud-ca",
+    "nextcloud-tls",
+    "postgres-public-ca"
+  ],
+  "secrets": {
+    "nextcloud-admin": {
+      "provider": "vault"
+    },
+    "nextcloud-cache": {
+      "provider": "vault"
+    },
+    "nextcloud-ca": {
+      "provider": "ca"
+    },
+    "nextcloud-tls": {
+      "provider": "certificate",
+      "services": [
+        "nextcloud-backend"
+      ]
+    },
+    "nextcloud-smtp": {
+      "provider": "vault"
+    }
+  },
+  "endpoints": {
+    "web": {
+      "connection": "cloud",
+      "scheme": "https",
+      "path": "/"
+    },
+    "cache": {
+      "connection": "cache",
+      "scheme": "tls"
+    },
+    "status": {
+      "connection": "cloud",
+      "scheme": "https",
+      "path": "/status.php"
+    },
+    "smtp": {
+      "connection": "submission",
+      "scheme": "smtps"
+    }
+  },
+  "chart": {
+    "values": {
+      "fullnameOverride": "nextcloud",
+      "internalDatabase": {
+        "enabled": false
+      },
+      "externalDatabase": {
+        "enabled": true,
+        "type": "postgresql",
+        "database": "nextcloud",
+        "existingSecret": {
+          "enabled": true,
+          "secretName": "nextcloud-postgres",
+          "usernameKey": "username",
+          "passwordKey": "password"
+        }
+      },
+      "nextcloud": {
+        "existingSecret": {
+          "enabled": true,
+          "secretName": "nextcloud-admin",
+          "usernameKey": "username",
+          "passwordKey": "password"
+        },
+        "podSecurityContext": {
+          "runAsUser": 33,
+          "runAsGroup": 33,
+          "fsGroup": 33,
+          "runAsNonRoot": true
+        },
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          }
+        },
+        "configs": {
+          "skeleton.config.php": "<?php\n$cache = parse_url(getenv('CACHE_URL'));\n$smtp = parse_url(getenv('SMTP_URL'));\n$CONFIG = [\n  'memcache.local' => '\\OC\\Memcache\\APCu',\n  'memcache.distributed' => '\\OC\\Memcache\\Redis',\n  'memcache.locking' => '\\OC\\Memcache\\Redis',\n  'redis' => [\n    'host' => 'tls://' . $cache['host'],\n    'port' => $cache['port'],\n    'user' => getenv('CACHE_USER'),\n    'password' => getenv('CACHE_PASSWORD'),\n    'dbindex' => 1,\n    'timeout' => 3.0,\n    'read_timeout' => 3.0,\n    'ssl_context' => ['cafile' => '/trust/ca.crt', 'verify_peer' => true, 'verify_peer_name' => true],\n  ],\n  'trusted_proxies' => json_decode(file_get_contents('/proxy-clients/clients.json'), true, 512, JSON_THROW_ON_ERROR),\n  'overwrite.cli.url' => getenv('CLOUD_URL'),\n  'overwriteprotocol' => 'https',\n  'mail_smtpmode' => 'smtp',\n  'mail_smtphost' => $smtp['host'],\n  'mail_smtpport' => $smtp['port'],\n  'mail_smtpsecure' => 'ssl',\n  'mail_smtpauth' => true,\n  'mail_smtpname' => getenv('SMTP_USER'),\n  'mail_smtppassword' => trim(file_get_contents('/smtp/password')),\n  'mail_from_address' => 'nextcloud',\n  'mail_domain' => getenv('MAIL_DOMAIN'),\n  'mail_smtpstreamoptions' => ['ssl' => ['cafile' => '/trust/ca.crt', 'verify_peer' => true, 'verify_peer_name' => true]],\n  'allow_local_remote_servers' => true,\n  'app.mail.verify-tls-peer' => true,\n  'maintenance_window_start' => 1,\n];\n"
+        },
+        "phpConfigs": {
+          "skeleton.ini": "apc.enable_cli=1\nopenssl.cafile=/var/www/html/config/mail-ca.pem\n"
+        },
+        "extraEnv": [
+          {
+            "name": "PGSSLMODE",
+            "value": "verify-full"
+          },
+          {
+            "name": "PGSSLROOTCERT",
+            "value": "/postgres-ca/ca.crt"
+          },
+          {
+            "name": "PHP_MEMORY_LIMIT",
+            "value": "256M"
+          },
+          {
+            "name": "CLOUD_URL"
+          },
+          {
+            "name": "CACHE_URL"
+          },
+          {
+            "name": "CACHE_USER",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "nextcloud-cache",
+                "key": "username"
+              }
+            }
+          },
+          {
+            "name": "CACHE_PASSWORD",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "nextcloud-cache",
+                "key": "password"
+              }
+            }
+          },
+          {
+            "name": "SMTP_URL"
+          },
+          {
+            "name": "SMTP_USER"
+          },
+          {
+            "name": "MAIL_DOMAIN"
+          },
+          {
+            "name": "MAIL_APP_URL"
+          },
+          {
+            "name": "MAIL_APP_SHA256"
+          },
+          {
+            "name": "MAIL_APP_VERSION"
+          }
+        ],
+        "extraVolumes": [
+          {
+            "name": "trust",
+            "secret": {
+              "secretName": "nextcloud-ca"
+            }
+          },
+          {
+            "name": "web-tls",
+            "secret": {
+              "secretName": "nextcloud-tls"
+            }
+          },
+          {
+            "name": "apache-config",
+            "configMap": {
+              "name": "nextcloud-apache"
+            }
+          },
+          {
+            "name": "apache-run",
+            "emptyDir": {}
+          },
+          {
+            "name": "apache-lock",
+            "emptyDir": {}
+          },
+          {
+            "name": "postgres-ca",
+            "secret": {
+              "secretName": "postgres-public-ca"
+            }
+          },
+          {
+            "name": "proxy-clients",
+            "configMap": {
+              "name": "nextcloud-proxy"
+            }
+          },
+          {
+            "name": "smtp",
+            "secret": {
+              "secretName": "nextcloud-smtp"
+            }
+          }
+        ],
+        "extraVolumeMounts": [
+          {
+            "name": "trust",
+            "mountPath": "/trust",
+            "readOnly": true
+          },
+          {
+            "name": "web-tls",
+            "mountPath": "/web-tls",
+            "readOnly": true
+          },
+          {
+            "name": "apache-config",
+            "mountPath": "/etc/apache2/conf-enabled/skeleton.conf",
+            "subPath": "skeleton.conf",
+            "readOnly": true
+          },
+          {
+            "name": "apache-run",
+            "mountPath": "/var/run/apache2"
+          },
+          {
+            "name": "apache-lock",
+            "mountPath": "/var/lock/apache2"
+          },
+          {
+            "name": "postgres-ca",
+            "mountPath": "/postgres-ca",
+            "readOnly": true
+          },
+          {
+            "name": "proxy-clients",
+            "mountPath": "/proxy-clients",
+            "readOnly": true
+          },
+          {
+            "name": "apache-config",
+            "mountPath": "/etc/apache2/conf-enabled/remoteip.conf",
+            "subPath": "remoteip.conf",
+            "readOnly": true
+          },
+          {
+            "name": "smtp",
+            "mountPath": "/smtp",
+            "readOnly": true
+          }
+        ],
+        "hooks": {
+          "before-starting": "#!/bin/sh\nset -e\nphp occ security:certificates:import /trust/ca.crt\nphp occ config:app:set files default_quota --value=\"128 GB\"\nphp occ user:setting \"$NEXTCLOUD_ADMIN_USER\" files quota \"128 GB\"\nphp occ background:cron\ncat /etc/ssl/certs/ca-certificates.crt /trust/ca.crt > /var/www/html/config/mail-ca.pem\nif [ ! -f /var/www/html/custom_apps/mail/appinfo/info.xml ]; then\n  curl -fL \"$MAIL_APP_URL\" -o /tmp/nextcloud-mail.tar.gz\n  printf '%s  /tmp/nextcloud-mail.tar.gz\\n' \"$MAIL_APP_SHA256\" | sha256sum -c -\n  tar -xzf /tmp/nextcloud-mail.tar.gz -C /var/www/html/custom_apps\n  rm /tmp/nextcloud-mail.tar.gz\nfi\nphp occ app:enable mail\ntest \"$(php occ config:app:get mail installed_version)\" = \"$MAIL_APP_VERSION\"\n"
+        }
+      },
+      "persistence": {
+        "enabled": true,
+        "existingClaim": "nextcloud-files"
+      },
+      "startupProbe": {
+        "enabled": true,
+        "failureThreshold": 90
+      },
+      "cronjob": {
+        "enabled": true,
+        "type": "cronjob",
+        "cronjob": {
+          "successfulJobsHistoryLimit": 1,
+          "failedJobsHistoryLimit": 1,
+          "activeDeadlineSeconds": 240,
+          "securityContext": {
+            "runAsUser": 33,
+            "runAsGroup": 33,
+            "runAsNonRoot": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          },
+          "command": [
+            "php",
+            "-f",
+            "/var/www/html/cron.php"
+          ]
+        }
+      }
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "nextcloud-files"
+      },
+      "spec": {
+        "storageClassName": "",
+        "volumeName": "nextcloud-files",
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "128Gi"
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "nextcloud-vm"
+      },
+      "spec": {
+        "externalIPs": [],
+        "externalTrafficPolicy": "Local",
+        "selector": {
+          "app.kubernetes.io/name": "nextcloud",
+          "app.kubernetes.io/instance": "nextcloud",
+          "app.kubernetes.io/component": "app"
+        },
+        "ports": [
+          {
+            "name": "https",
+            "port": 8443,
+            "targetPort": 8443
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "nextcloud-apache"
+      },
+      "data": {
+        "skeleton.conf": "LoadModule ssl_module /usr/lib/apache2/modules/mod_ssl.so\nListen 8443\nMaxRequestWorkers 4\nServerLimit 4\nStartServers 1\nMinSpareServers 1\nMaxSpareServers 2\n<VirtualHost *:8443>\n    DocumentRoot /var/www/html\n    SSLEngine on\n    SSLCertificateFile /web-tls/tls.crt\n    SSLCertificateKeyFile /web-tls/tls.key\n</VirtualHost>\n",
+        "remoteip.conf": "# Nextcloud validates forwarded client addresses using its generated trusted_proxies.\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "nextcloud-proxy"
+      },
+      "data": {
+        "clients.json": []
+      }
+    }
+  ],
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "nextcloud-files"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "128Gi"
+        },
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "nextcloud-files"
+        },
+        "mountOptions": [
+          "nfsvers=4.2"
+        ],
+        "nfs": {},
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "compute": {
+    "main": {
+      "replicas": 1,
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 250,
+            "ram_mib": 512
+          },
+          "limits": {
+            "cpu_millicores": 1500,
+            "ram_mib": 2048
+          }
+        }
+      }
+    },
+    "cron": {
+      "fixed_replicas": 1,
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 25,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 250,
+            "ram_mib": 512
+          }
+        }
+      }
+    }
+  },
+  "readiness": [
+    {
+      "resource": "deployment/nextcloud",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/cloud/fqdn",
+      "path": "/chart/values/nextcloud/host"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/web",
+      "path": "/chart/values/nextcloud/extraEnv/3/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/public-sql/dns_socket",
+      "path": "/chart/values/externalDatabase/host"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/cron/containers/main",
+      "path": "/chart/values/cronjob/cronjob/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/resources/1/spec/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/nextcloud-backend/port",
+      "path": "/resources/1/spec/ports/0/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs/public-data/nextcloud/volume",
+      "path": "/cluster_resources/0/spec/nfs"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs/public-data/nextcloud/port_option",
+      "path": "/cluster_resources/0/spec/mountOptions/1"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/cache",
+      "path": "/chart/values/nextcloud/extraEnv/4/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/service_clients/nextcloud-backend",
+      "path": "/resources/3/data/clients.json"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/web",
+      "path": "/files/verification.json/nextcloud_verification/canonical_url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/status",
+      "path": "/files/verification.json/nextcloud_verification/commands/self_http/3"
+    },
+    {
+      "op": "copy",
+      "from": "/context/service_clients/nextcloud-backend",
+      "path": "/files/verification.json/nextcloud_verification/proxy_clients"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/smtp",
+      "path": "/chart/values/nextcloud/extraEnv/7/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/nextcloud",
+      "path": "/chart/values/nextcloud/extraEnv/8/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/site_domain",
+      "path": "/chart/values/nextcloud/extraEnv/9/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/apps/mail/url",
+      "path": "/chart/values/nextcloud/extraEnv/10/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/apps/mail/sha256",
+      "path": "/chart/values/nextcloud/extraEnv/11/value"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/postmaster",
+      "path": "/files/mail.json/account/email"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/imaps/fqdn",
+      "path": "/files/mail.json/account/imap-host"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/imaps/port",
+      "path": "/files/mail.json/account/imap-port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/postmaster",
+      "path": "/files/mail.json/account/imap-user"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/submission/fqdn",
+      "path": "/files/mail.json/account/smtp-host"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/submission/port",
+      "path": "/files/mail.json/account/smtp-port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/postmaster",
+      "path": "/files/mail.json/account/smtp-user"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/apps/mail/version",
+      "path": "/chart/values/nextcloud/extraEnv/12/value"
+    }
+  ],
+  "service_clients": [
+    "nextcloud-backend"
+  ],
+  "json_fields": [
+    "/resources/3/data/clients.json",
+    "/files/verification.json",
+    "/files/mail.json"
+  ],
+  "files": {
+    "verification.json": {
+      "nextcloud_verification": {
+        "commands": {
+          "status": [
+            "php",
+            "occ",
+            "status",
+            "--output=json"
+          ],
+          "proxies": [
+            "php",
+            "occ",
+            "config:system:get",
+            "trusted_proxies",
+            "--output=json"
+          ],
+          "canonical_url": [
+            "php",
+            "occ",
+            "config:system:get",
+            "overwrite.cli.url"
+          ],
+          "cron_mode": [
+            "php",
+            "occ",
+            "config:app:get",
+            "core",
+            "backgroundjobs_mode"
+          ],
+          "cron_time": [
+            "php",
+            "occ",
+            "config:app:get",
+            "core",
+            "lastcron"
+          ],
+          "clock": [
+            "date",
+            "+%s"
+          ],
+          "apache_remoteip": [
+            "cat",
+            "/etc/apache2/conf-enabled/remoteip.conf"
+          ],
+          "self_http": [
+            "php",
+            "-r",
+            "require_once 'lib/base.php';\n$client = \\OCP\\Server::get(\\OCP\\Http\\Client\\IClientService::class)->newClient();\necho $client->get($argv[1], ['nextcloud' => ['allow_local_address' => true]])->getBody();\n"
+          ]
+        },
+        "cron_resource": "cronjob/nextcloud-cron",
+        "max_cron_age_seconds": 900,
+        "proxy_clients": [],
+        "applications": [
+          "nextcloud",
+          "cloud-edge"
+        ]
+      }
+    },
+    "mail.json": {
+      "account_name": "postmaster",
+      "account": {
+        "name": "Postmaster",
+        "imap-ssl-mode": "ssl",
+        "smtp-ssl-mode": "ssl"
+      }
+    }
+  },
+  "mailboxes": [
+    "nextcloud",
+    "postmaster"
+  ]
+}

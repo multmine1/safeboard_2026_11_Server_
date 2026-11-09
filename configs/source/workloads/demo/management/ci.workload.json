@@ -1,0 +1,684 @@
+{
+  "name": "ci",
+  "vm": "388b59ce-4143-5a32-91a3-689388bc1384",
+  "enabled": true,
+  "component": "ci",
+  "depends_on": [
+    "forgejo",
+    "registry",
+    "sealed-secrets"
+  ],
+  "secrets": {
+    "ci-signing": {
+      "provider": "vault"
+    },
+    "ci-runner": {
+      "provider": "vault"
+    }
+  },
+  "endpoints": {
+    "git": {
+      "connection": "artifacts",
+      "scheme": "https",
+      "path": "/"
+    },
+    "portfolio": {
+      "connection": "portfolio-backend",
+      "scheme": "https",
+      "path": "/"
+    }
+  },
+  "storage": {
+    "volumes": {
+      "work": {
+        "mount": "cache",
+        "directory": "jobs"
+      },
+      "docker": {
+        "mount": "cache",
+        "directory": "docker"
+      }
+    }
+  },
+  "guest": {
+    "directories": [
+      {
+        "owner": "0",
+        "group": "0",
+        "mode": "0700"
+      },
+      {
+        "path": "/etc/docker",
+        "owner": "0",
+        "group": "0",
+        "mode": "0755"
+      }
+    ],
+    "files": [
+      {
+        "path": "/etc/docker/daemon.json",
+        "mode": "0644",
+        "content": {
+          "bridge": "none",
+          "iptables": false,
+          "ip6tables": false,
+          "ip-masq": false
+        }
+      }
+    ],
+    "services": [
+      "docker"
+    ],
+    "registration": {
+      "name": "ci"
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "delivery"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "ci-config"
+      },
+      "data": {
+        "kubeconfig.json": {
+          "apiVersion": "v1",
+          "kind": "Config",
+          "clusters": [
+            {
+              "name": "demo",
+              "cluster": {
+                "certificate-authority": "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+              }
+            }
+          ],
+          "users": [
+            {
+              "name": "delivery",
+              "user": {
+                "tokenFile": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+              }
+            }
+          ],
+          "contexts": [
+            {
+              "name": "public",
+              "context": {
+                "cluster": "demo",
+                "user": "delivery"
+              }
+            }
+          ],
+          "current-context": "public"
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "ci"
+      },
+      "spec": {
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "ci"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "ci"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "delivery",
+            "securityContext": {
+              "runAsUser": 0,
+              "runAsGroup": 0
+            },
+            "containers": [
+              {
+                "name": "runner",
+                "command": [
+                  "/usr/local/bin/forgejo-runner",
+                  "daemon",
+                  "--config",
+                  "/etc/ci/runner.json"
+                ],
+                "workingDir": "/workspace",
+                "volumeMounts": [
+                  {
+                    "name": "config",
+                    "mountPath": "/etc/ci",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "work",
+                    "mountPath": "/workspace"
+                  },
+                  {
+                    "name": "docker",
+                    "mountPath": "/var/run/docker.sock"
+                  },
+                  {
+                    "name": "ca",
+                    "mountPath": "/etc/ssl/certs",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "signing",
+                    "mountPath": "/signing",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "runner",
+                    "mountPath": "/usr/local/bin/forgejo-runner",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "werf",
+                    "mountPath": "/usr/local/bin/werf",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "gitleaks",
+                    "mountPath": "/usr/local/bin/gitleaks",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "trivy",
+                    "mountPath": "/usr/local/bin/trivy",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "cosign",
+                    "mountPath": "/usr/local/bin/cosign",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "docker-cli",
+                    "mountPath": "/usr/bin/docker",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "docker-plugins",
+                    "mountPath": "/usr/libexec/docker/cli-plugins",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "uv",
+                    "mountPath": "/usr/local/bin/uv",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "config",
+                "projected": {
+                  "defaultMode": 256,
+                  "sources": [
+                    {
+                      "configMap": {
+                        "name": "ci-config"
+                      }
+                    },
+                    {
+                      "secret": {
+                        "name": "ci-runner"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "work",
+                "hostPath": {
+                  "type": "Directory"
+                }
+              },
+              {
+                "name": "docker",
+                "hostPath": {
+                  "path": "/var/run/docker.sock",
+                  "type": "Socket"
+                }
+              },
+              {
+                "name": "ca",
+                "hostPath": {
+                  "path": "/etc/ssl/certs",
+                  "type": "Directory"
+                }
+              },
+              {
+                "name": "signing",
+                "secret": {
+                  "secretName": "ci-signing",
+                  "defaultMode": 256
+                }
+              },
+              {
+                "name": "runner",
+                "hostPath": {
+                  "path": "/usr/local/bin/forgejo-runner",
+                  "type": "File"
+                }
+              },
+              {
+                "name": "werf",
+                "hostPath": {
+                  "path": "/usr/local/bin/werf",
+                  "type": "File"
+                }
+              },
+              {
+                "name": "gitleaks",
+                "hostPath": {
+                  "path": "/usr/local/bin/gitleaks",
+                  "type": "File"
+                }
+              },
+              {
+                "name": "trivy",
+                "hostPath": {
+                  "path": "/usr/local/bin/trivy",
+                  "type": "File"
+                }
+              },
+              {
+                "name": "cosign",
+                "hostPath": {
+                  "path": "/usr/local/bin/cosign",
+                  "type": "File"
+                }
+              },
+              {
+                "name": "docker-cli",
+                "hostPath": {
+                  "path": "/usr/bin/docker",
+                  "type": "File"
+                }
+              },
+              {
+                "name": "docker-plugins",
+                "hostPath": {
+                  "path": "/usr/libexec/docker/cli-plugins",
+                  "type": "Directory"
+                }
+              },
+              {
+                "name": "uv",
+                "hostPath": {
+                  "path": "/usr/local/bin/uv",
+                  "type": "File"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "delegated_resources": [
+    {
+      "network": "4ef34f2c-850c-5070-afca-e9b48f6b2df8",
+      "resources": [
+        {
+          "apiVersion": "rbac.authorization.k8s.io/v1",
+          "kind": "Role",
+          "metadata": {
+            "name": "delivery"
+          },
+          "rules": [
+            {
+              "apiGroups": [
+                "apps"
+              ],
+              "resources": [
+                "deployments",
+                "replicasets"
+              ],
+              "verbs": [
+                "get",
+                "list",
+                "watch",
+                "create",
+                "update",
+                "patch",
+                "delete"
+              ]
+            },
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resources": [
+                "configmaps",
+                "secrets",
+                "services"
+              ],
+              "verbs": [
+                "get",
+                "list",
+                "watch",
+                "create",
+                "update",
+                "patch",
+                "delete"
+              ]
+            },
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resources": [
+                "pods",
+                "pods/log",
+                "events"
+              ],
+              "verbs": [
+                "get",
+                "list",
+                "watch"
+              ]
+            },
+            {
+              "apiGroups": [
+                "networking.k8s.io"
+              ],
+              "resources": [
+                "ingresses"
+              ],
+              "verbs": [
+                "get",
+                "list",
+                "watch",
+                "create",
+                "update",
+                "patch",
+                "delete"
+              ]
+            }
+          ]
+        },
+        {
+          "apiVersion": "rbac.authorization.k8s.io/v1",
+          "kind": "RoleBinding",
+          "metadata": {
+            "name": "delivery"
+          },
+          "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "Role",
+            "name": "delivery"
+          },
+          "subjects": [
+            {
+              "kind": "ServiceAccount",
+              "name": "delivery"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/component/binaries",
+      "path": "/guest/binaries"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/work",
+      "path": "/guest/directories/0/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/docker",
+      "path": "/guest/files/0/content/data-root"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/git",
+      "path": "/guest/registration/instance"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/git",
+      "path": "/files/runner.json/runner/envs/FORGEJO_URL"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/portfolio",
+      "path": "/files/runner.json/runner/envs/PORTFOLIO_URL"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/registry/dns_socket",
+      "path": "/files/runner.json/runner/envs/REGISTRY"
+    },
+    {
+      "op": "copy",
+      "from": "/context/api_server",
+      "path": "/resources/1/data/kubeconfig.json/clusters/0/cluster/server"
+    },
+    {
+      "op": "copy",
+      "from": "/context/delegations/4ef34f2c-850c-5070-afca-e9b48f6b2df8",
+      "path": "/resources/1/data/kubeconfig.json/contexts/0/context/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/delegated_resources/0/resources/1/subjects/0/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/image",
+      "path": "/resources/2/spec/template/spec/containers/0/image"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/resources/2/spec/template/spec/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/resources/2/spec/template/metadata/labels/skeleton.vm"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/resources/2/spec/template/metadata/annotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/work",
+      "path": "/resources/2/spec/template/spec/volumes/1/hostPath/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/delegations/4ef34f2c-850c-5070-afca-e9b48f6b2df8",
+      "path": "/files/runner.json/runner/envs/KUBERNETES_NAMESPACE"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/checkout_action",
+      "path": "/files/delivery.yml/jobs/delivery/steps/0/uses"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/python_version",
+      "path": "/files/runner.json/runner/envs/UV_PYTHON"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/resources/2/spec/replicas"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/resources/2/spec/template/spec/containers/0/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/signing/configuration",
+      "path": "/resources/1/data/signing-config.json"
+    }
+  ],
+  "json_fields": [
+    "/files/runner.json",
+    "/resources/1/data/kubeconfig.json",
+    "/guest/files/0/content",
+    "/files/delivery.yml",
+    "/resources/1/data/signing-config.json"
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/ci",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "targets": [
+    "51ca2996-3113-5182-84d3-56bc448f55a8"
+  ],
+  "files": {
+    "delivery.yml": {
+      "name": "Delivery",
+      "on": {
+        "push": {
+          "branches": [
+            "main"
+          ]
+        },
+        "workflow_dispatch": {}
+      },
+      "jobs": {
+        "delivery": {
+          "runs-on": "ci",
+          "env": {
+            "IMAGE_REPOSITORY": "${{ vars.IMAGE_REPOSITORY }}",
+            "BUNDLE_REPOSITORY": "${{ vars.BUNDLE_REPOSITORY }}",
+            "APP_RELEASE": "${{ vars.APP_RELEASE }}",
+            "REGISTRY_USERNAME": "${{ secrets.REGISTRY_USERNAME }}",
+            "REGISTRY_PASSWORD": "${{ secrets.REGISTRY_PASSWORD }}",
+            "COSIGN_PASSWORD": "${{ secrets.COSIGN_PASSWORD }}",
+            "BASE_IMAGE": "${{ vars.BASE_IMAGE }}",
+            "DEPLOY_VALUES": "${{ vars.DEPLOY_VALUES }}",
+            "APP_NAMESPACE": "${{ vars.APP_NAMESPACE }}",
+            "DEPLOY_REVISION": "${{ vars.DEPLOY_REVISION }}"
+          },
+          "steps": [
+            {
+              "name": "Checkout",
+              "with": {
+                "fetch-depth": 0,
+                "persist-credentials": false
+              }
+            },
+            {
+              "name": "Test application behavior",
+              "run": "node --test\n"
+            },
+            {
+              "name": "Check source",
+              "run": "gitleaks git --redact\ntrivy fs --exit-code 1 --severity HIGH,CRITICAL .\n"
+            },
+            {
+              "name": "Authenticate Registry",
+              "run": "printf %s \"$REGISTRY_PASSWORD\" | docker login \"$REGISTRY\" --username \"$REGISTRY_USERNAME\" --password-stdin"
+            },
+            {
+              "name": "Build and publish",
+              "run": "docker buildx build --build-arg BASE_IMAGE --network host --allow network.host --metadata-file image.json --tag \"${IMAGE_REPOSITORY:?}:${GITHUB_SHA}-${DEPLOY_REVISION:?}\" --push .\nnode -e 'const fs=require(\"fs\"); const m=JSON.parse(fs.readFileSync(\"image.json\")); fs.appendFileSync(process.env.GITHUB_ENV,\"IMAGE_REF=\"+process.env.IMAGE_REPOSITORY+\"@\"+m[\"containerimage.digest\"]+\"\\n\");'\n"
+            },
+            {
+              "name": "Validate the built application image",
+              "run": "node --test tests/image.test.mjs\n"
+            },
+            {
+              "name": "Scan and sign the immutable image",
+              "run": "trivy image --exit-code 1 --severity HIGH,CRITICAL \"$IMAGE_REF\"\ncosign sign --key /signing/cosign.key --signing-config /etc/ci/signing-config.json --yes \"$IMAGE_REF\"\ncosign verify --key /signing/cosign.pub --insecure-ignore-tlog \"$IMAGE_REF\"\n"
+            },
+            {
+              "name": "Publish and deploy the Helm bundle",
+              "run": "printf %s \"${DEPLOY_VALUES:?}\" > .ci-values.json\nwerf bundle publish --repo \"${BUNDLE_REPOSITORY:?}\" --tag \"${GITHUB_SHA}-${DEPLOY_REVISION:?}\" --values .ci-values.json --set-string image.ref=\"$IMAGE_REF\"\nwerf bundle apply --repo \"$BUNDLE_REPOSITORY\" --tag \"${GITHUB_SHA}-${DEPLOY_REVISION:?}\" --namespace \"${APP_NAMESPACE:?}\" --release \"${APP_RELEASE:?}\"\n"
+            },
+            {
+              "name": "Publish a selected portfolio mirror",
+              "if": "${{ vars.PUBLISH_PORTFOLIO == 'true' }}",
+              "env": {
+                "PORTFOLIO_SOURCE_URL": "${{ secrets.PORTFOLIO_SOURCE_URL }}",
+                "PORTFOLIO_PUSH_URL": "${{ secrets.PORTFOLIO_PUSH_URL }}"
+              },
+              "run": "git clone --mirror \"$PORTFOLIO_SOURCE_URL\" mirror.git\ncd mirror.git\ngit push --mirror \"$PORTFOLIO_PUSH_URL\"\n"
+            },
+            {
+              "name": "Close Registry credentials",
+              "if": "always()",
+              "run": "docker logout \"$REGISTRY\"\nrm -rf mirror.git\n"
+            }
+          ]
+        }
+      }
+    },
+    "runner.json": {
+      "log": {
+        "level": "info"
+      },
+      "runner": {
+        "capacity": 1,
+        "timeout": "2h",
+        "labels": [
+          "ci:host"
+        ],
+        "envs": {
+          "KUBECONFIG": "/etc/ci/kubeconfig.json",
+          "GIT_SSL_CAINFO": "/etc/ssl/certs/ca-certificates.crt",
+          "WERF_SYNCHRONIZATION": ":local",
+          "NODE_EXTRA_CA_CERTS": "/etc/ssl/certs/ca-certificates.crt"
+        }
+      },
+      "host": {
+        "workdir_parent": "/workspace"
+      },
+      "cache": {
+        "enabled": false
+      }
+    }
+  },
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 100,
+            "ram_mib": 256
+          },
+          "limits": {
+            "cpu_millicores": 3000,
+            "ram_mib": 4096
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

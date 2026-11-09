@@ -1,0 +1,10 @@
+- name: Select the declared boot target
+  ansible.builtin.file:
+    path: "{{ hypervisor_boot.link }}"
+    src: "{{ hypervisor_boot.target }}"
+    state: link
+
+- name: Apply the declared display manager state
+  ansible.builtin.systemd_service:
+    name: "{{ hypervisor_boot.display_manager.name }}"
+    state: "{{ hypervisor_boot.display_manager.state }}"

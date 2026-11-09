@@ -1,0 +1,20 @@
+- name: Create the native Helm client cache
+  ansible.builtin.file:
+    path: "{{ helm.cache | dirname }}"
+    state: directory
+    mode: "{{ cluster.settings.deployment.directory_mode }}"
+
+- name: Cache the pinned official Helm client
+  ansible.builtin.get_url:
+    url: "{{ helm.url }}"
+    checksum: "{{ helm.checksum }}"
+    dest: "{{ helm.cache }}"
+    mode: "{{ cluster.settings.deployment.file_mode }}"
+
+- name: Install only the native Helm executable
+  ansible.builtin.unarchive:
+    src: "{{ helm.cache }}"
+    dest: "{{ helm.directory }}"
+    include: "{{ helm.include }}"
+    extra_opts: "{{ helm.extra_opts }}"
+    remote_src: true

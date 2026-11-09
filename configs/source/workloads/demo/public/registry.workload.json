@@ -1,0 +1,250 @@
+{
+  "name": "registry",
+  "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+  "enabled": true,
+  "component": "forgejo",
+  "depends_on": [
+    "sealed-secrets",
+    "registry-db"
+  ],
+  "required_secrets": [
+    "registry-admin",
+    "registry-tls",
+    "registry-postgres",
+    "postgres-public-ca"
+  ],
+  "endpoints": {
+    "web": {
+      "service": "registry",
+      "scheme": "https",
+      "path": "/"
+    }
+  },
+  "chart": {
+    "values": {
+      "persistence": {
+        "claimName": "registry-files"
+      },
+      "extraVolumes": [
+        {
+          "name": "postgres-ca",
+          "secret": {
+            "secretName": "postgres-public-ca"
+          }
+        },
+        {
+          "name": "web-tls",
+          "secret": {
+            "secretName": "registry-tls"
+          }
+        }
+      ],
+      "gitea": {
+        "admin": {
+          "existingSecret": "registry-admin"
+        },
+        "config": {
+          "database": {
+            "NAME": "registry"
+          },
+          "packages": {
+            "ENABLED": true
+          },
+          "actions": {
+            "ENABLED": false
+          },
+          "service": {
+            "REQUIRE_SIGNIN_VIEW": true
+          }
+        },
+        "additionalConfigFromEnvs": [
+          {
+            "name": "FORGEJO__database__USER",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "registry-postgres",
+                "key": "username"
+              }
+            }
+          },
+          {
+            "name": "FORGEJO__database__PASSWD",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "registry-postgres",
+                "key": "password"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "registry-files"
+      },
+      "spec": {
+        "storageClassName": "",
+        "volumeName": "registry-files",
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "128Gi"
+          }
+        }
+      }
+    }
+  ],
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "registry-files"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "128Gi"
+        },
+        "volumeMode": "Filesystem",
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "registry-files",
+          "namespace": ""
+        },
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "local": {
+          "path": ""
+        }
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/name",
+      "path": "/chart/values/fullnameOverride"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/deployment/labels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/gitea/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/service/http/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/registry/port",
+      "path": "/chart/values/service/http/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/registry/port",
+      "path": "/chart/values/gitea/config/server/HTTP_PORT"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/web",
+      "path": "/chart/values/gitea/config/server/ROOT_URL"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/local_paths/0/paths/0",
+      "path": "/cluster_resources/0/spec/local/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/local_paths/0/paths/0",
+      "path": "/guest/directories/0/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/public-sql/dns_socket",
+      "path": "/chart/values/gitea/config/database/HOST"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/registry",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "storage": {
+    "local_paths": [
+      {
+        "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+        "mount": "data",
+        "directory": "registry"
+      }
+    ]
+  },
+  "guest": {
+    "directories": [
+      {
+        "path": "",
+        "owner": "1000",
+        "group": "1000",
+        "mode": "2770"
+      }
+    ]
+  },
+  "secrets": {
+    "registry-admin": {
+      "provider": "vault"
+    },
+    "registry-tls": {
+      "provider": "certificate",
+      "services": [
+        "registry"
+      ]
+    }
+  }
+}

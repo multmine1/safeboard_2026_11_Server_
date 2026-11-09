@@ -1,0 +1,38 @@
+- name: Install declared host executables with the shared native tasks
+  ansible.builtin.include_role:
+    name: guest
+    tasks_from: binary
+  vars:
+    guest_plan: "{{ application_host_guest }}"
+  loop: "{{ application_host_plan.binaries | default([]) }}"
+  loop_control:
+    loop_var: binary
+
+- name: Create the prepared application directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ application_host_plan.directories | default([]) }}"
+
+- name: Persist the prepared application host files
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+    backup: true
+  loop: "{{ application_host_plan.files | default([]) }}"
+  register: application_host_files
+
+- name: Prepare the declared NFS exports
+  ansible.builtin.include_tasks: nfs.yml
+  when: application_host_plan.nfs is defined
+
+- name: Start or reload the declared host storage services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: "{{ 'restarted' if application_host_files.changed or (application_host_plan.nfs is defined and application_host_nfs_files.changed) else 'started' }}"
+  loop: "{{ application_host_plan.services | default([]) }}"

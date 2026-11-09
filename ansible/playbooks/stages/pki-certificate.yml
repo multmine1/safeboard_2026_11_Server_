@@ -1,0 +1,55 @@
+- name: Read the existing leaf identity
+  ansible.builtin.set_fact:
+    existing_certificate: "{{ pki_store.certificates.get(certificate.namespace ~ '/' ~ certificate.name, {}) }}"
+  no_log: true
+
+- name: Prepare the leaf private key in memory
+  community.crypto.openssl_privatekey_pipe:
+    content: "{{ existing_certificate.private_key | default(omit) }}"
+    return_current_key: true
+    type: "{{ settings.certificate.key_type }}"
+    size: "{{ settings.certificate.key_size }}"
+  register: leaf_key
+  no_log: true
+
+- name: Prepare the calculated DNS signing request
+  community.crypto.openssl_csr_pipe:
+    content: "{{ existing_certificate.csr | default(omit) }}"
+    privatekey_content: "{{ leaf_key.privatekey }}"
+    common_name: "{{ certificate.common_name }}"
+    subject_alt_name: "{{ certificate.subject_alt_name }}"
+    basic_constraints: [CA:FALSE]
+    basic_constraints_critical: true
+    key_usage: [digitalSignature, keyEncipherment]
+    extended_key_usage: [serverAuth]
+  register: leaf_csr
+  no_log: true
+
+- name: Read the existing leaf renewal window
+  community.crypto.x509_certificate_info:
+    content: "{{ existing_certificate.certificate }}"
+    valid_at:
+      renewal: "{{ settings.certificate.renew_before }}"
+  when: existing_certificate.certificate is defined
+  register: leaf_validity
+  no_log: true
+
+- name: Issue or renew the leaf with the private CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ existing_certificate.certificate | default(omit) }}"
+    csr_content: "{{ leaf_csr.csr }}"
+    provider: ownca
+    ownca_content: "{{ pki_store.ca.certificate }}"
+    ownca_privatekey_content: "{{ pki_store.ca.private_key }}"
+    ownca_not_after: "{{ settings.certificate.valid_for }}"
+    force: "{{ existing_certificate.certificate is defined and not leaf_validity.valid_at.renewal }}"
+  register: leaf_certificate
+  no_log: true
+
+- name: Retain the leaf identity in the encrypted store
+  ansible.builtin.set_fact:
+    pki_store: >-
+      {{ pki_store | combine({'certificates': {certificate.namespace ~ '/' ~ certificate.name:
+         {'private_key': leaf_key.privatekey, 'certificate': leaf_certificate.certificate, 'csr': leaf_csr.csr}}}, recursive=true) }}
+    pki_changed: "{{ pki_changed or leaf_key.changed or leaf_csr.changed or leaf_certificate.changed }}"
+  no_log: true

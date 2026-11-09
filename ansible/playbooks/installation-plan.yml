@@ -1,0 +1,49 @@
+- name: Match the prepared installation plan to the physical disks
+  hosts: hypervisors
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/hypervisor-installation.json
+  tasks:
+    - name: Read the identity of each declared whole disk without changing it
+      ansible.builtin.command:
+        argv:
+          - lsblk
+          - --json
+          - --bytes
+          - --nodeps
+          - --output
+          - PATH,SERIAL,SIZE,TYPE
+          - "{{ item.device }}"
+      loop: "{{ installation.disks }}"
+      loop_control:
+        label: "{{ item.storage_class }}"
+      register: installation_observed_disks
+      changed_when: false
+
+    - name: Require the exact declared device serial and capacity
+      ansible.builtin.assert:
+        that:
+          - observed | length == 1
+          - observed[0].type == 'disk'
+          - observed[0].serial | trim == item.item.serial
+          - observed[0].size | int == item.item.size_bytes
+        fail_msg: "The installation target differs from the declared {{ item.item.storage_class }} disk."
+      vars:
+        observed: "{{ (item.stdout | from_json).blockdevices }}"
+      loop: "{{ installation_observed_disks.results }}"
+      loop_control:
+        label: "{{ item.item.storage_class }}"
+
+    - name: Match the running root filesystem before preparing host identity retention
+      when: installation.previous_root is defined
+      block:
+        - name: Read the running root filesystem UUID without changing it
+          ansible.builtin.command:
+            argv: [findmnt, --noheadings, --output, UUID, /]
+          changed_when: false
+          register: installation_current_root
+
+        - name: Require the declared root filesystem for retaining SSH identity
+          ansible.builtin.assert:
+            that: installation.previous_root == '/dev/disk/by-uuid/' + (installation_current_root.stdout | trim)
+            fail_msg: The running root filesystem differs from the declared reinstall source.

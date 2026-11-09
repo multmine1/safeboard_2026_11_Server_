@@ -1,0 +1,56 @@
+- name: Wait for the published workload revision
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, get, "{{ readiness.resource }}",
+           --namespace, "{{ application.namespace }}", -o, "jsonpath={{ readiness.revision_path }}"]
+  when: readiness.revision_path is defined
+  register: application_revision
+  until: application_revision.rc == 0 and application_revision.stdout == application.fingerprint
+  retries: "{{ cluster.settings.deployment.api_retries }}"
+  delay: "{{ cluster.settings.deployment.api_delay }}"
+  changed_when: false
+
+- name: Wait for the application object to exist
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, --for=create, "{{ readiness.resource }}",
+           --namespace, "{{ application.namespace }}", "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  changed_when: false
+  when: readiness.revision_path is not defined
+
+- name: Restart Secret consumers when their managed values changed
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, rollout, restart, "{{ readiness.resource }}",
+           --namespace, "{{ application.namespace }}"]
+  when: readiness.rollout | default(false) and application_secrets_changed | default(false)
+  changed_when: true
+
+- name: Wait for the native workload rollout
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, rollout, status, "{{ readiness.resource }}",
+           --namespace, "{{ application.namespace }}", "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  when: readiness.rollout | default(false)
+  changed_when: false
+
+- name: Read the generation of the published resource
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, get, "{{ readiness.resource }}",
+           --namespace, "{{ application.namespace }}", -o, "jsonpath={.metadata.generation}"]
+  when: readiness.generation_path is defined
+  register: application_generation
+  changed_when: false
+
+- name: Wait for the operator to observe this generation
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait,
+           "--for=jsonpath={{ readiness.generation_path }}={{ application_generation.stdout }}",
+           "{{ readiness.resource }}", --namespace, "{{ application.namespace }}",
+           "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  when: readiness.generation_path is defined
+  changed_when: false
+
+- name: Wait for the declared native readiness
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, "--for={{ readiness.wait_for }}",
+           "{{ readiness.resource }}", --namespace, "{{ application.namespace }}",
+           "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  when: readiness.wait_for is defined
+  changed_when: false

@@ -1,0 +1,12 @@
+{
+  "provider_packages": [
+    {
+      "source": "registry.opentofu.org/dmacvicar/libvirt",
+      "version": "0.9.9",
+      "platform": "linux_amd64",
+      "url": "https://github.com/dmacvicar/terraform-provider-libvirt/releases/download/v0.9.9/terraform-provider-libvirt_0.9.9_linux_amd64.zip",
+      "checksum": "sha256:70a9d5af99a60179c7d38032662f443c3d2ad8bddab11d535c545c5c44273b2d",
+      "archive": "terraform-provider-libvirt_0.9.9_linux_amd64.zip"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+- name: Prepare the CA private key in memory
+  community.crypto.openssl_privatekey_pipe:
+    content: "{{ pki_store.ca.private_key | default(omit) }}"
+    return_current_key: true
+    type: "{{ settings.ca.key_type }}"
+    size: "{{ settings.ca.key_size }}"
+  register: ca_key
+  no_log: true
+
+- name: Prepare the CA signing request
+  community.crypto.openssl_csr_pipe:
+    content: "{{ pki_store.ca.csr | default(omit) }}"
+    privatekey_content: "{{ ca_key.privatekey }}"
+    common_name: "{{ settings.ca.common_name }}"
+    basic_constraints: [CA:TRUE]
+    basic_constraints_critical: true
+    key_usage: [keyCertSign, cRLSign]
+    use_common_name_for_san: false
+  register: ca_csr
+  no_log: true
+
+- name: Prepare the self-signed CA certificate
+  community.crypto.x509_certificate_pipe:
+    content: "{{ pki_store.ca.certificate | default(omit) }}"
+    privatekey_content: "{{ ca_key.privatekey }}"
+    csr_content: "{{ ca_csr.csr }}"
+    provider: selfsigned
+    selfsigned_not_after: "{{ settings.ca.valid_for }}"
+  register: ca_certificate
+  no_log: true
+
+- name: Read CA validity for the requested leaf lifetime
+  community.crypto.x509_certificate_info:
+    content: "{{ ca_certificate.certificate }}"
+    valid_at:
+      leaf_expiry: "{{ settings.certificate.valid_for }}"
+  register: ca_validity
+  no_log: true
+
+- name: Require an explicit CA rollover before its lifetime is exhausted
+  ansible.builtin.assert:
+    that: ca_validity.valid_at.leaf_expiry
+    fail_msg: Renew the CA and distribute its trust anchor before issuing new leaf certificates.
+
+- name: Retain the CA identity in the encrypted store
+  ansible.builtin.set_fact:
+    pki_store: "{{ pki_store | combine({'ca': {'private_key': ca_key.privatekey, 'certificate': ca_certificate.certificate, 'csr': ca_csr.csr}}) }}"
+    pki_changed: "{{ pki_changed or ca_key.changed or ca_csr.changed or ca_certificate.changed }}"
+  no_log: true

@@ -1,0 +1,32 @@
+- name: Restore the saved SSH host identity from the hypervisor console
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+    - ../../configs/generated/ansible/sshd.json
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+    ssh_host_keys: "{{ vault_store.ssh_host_keys }}"
+  pre_tasks:
+    - name: Require a Linux console for local host key restoration
+      ansible.builtin.assert:
+        that: lookup('pipe', 'uname') == 'Linux'
+        fail_msg: Run this playbook on the hypervisor, not on the Mac.
+
+    - name: Read the local network identity
+      ansible.builtin.setup:
+        gather_subset: [network]
+
+    - name: Require this console to belong to the declared hypervisor
+      ansible.builtin.assert:
+        that: hypervisor_address in ansible_facts.all_ipv4_addresses
+
+  tasks:
+    - name: Restore the prepared host key files
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: hostkeys_restore

@@ -1,0 +1,183 @@
+{
+  "name": "grafana",
+  "vm": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+  "enabled": true,
+  "component": "grafana",
+  "depends_on": [
+    "metrics",
+    "sealed-secrets",
+    "logs",
+    "hypervisor-dashboard"
+  ],
+  "secrets": {
+    "grafana-admin": {
+      "provider": "vault"
+    }
+  },
+  "endpoints": {
+    "metrics": {
+      "connection": "metrics",
+      "scheme": "http",
+      "path": "/"
+    },
+    "web": {
+      "service": "grafana",
+      "scheme": "http",
+      "path": "/"
+    },
+    "logs": {
+      "connection": "logs",
+      "scheme": "http",
+      "path": "/"
+    }
+  },
+  "chart": {
+    "values": {
+      "fullnameOverride": "grafana",
+      "admin": {
+        "existingSecret": "grafana-admin"
+      },
+      "testFramework": {
+        "enabled": false
+      },
+      "initChownData": {
+        "enabled": false
+      },
+      "service": {
+        "externalIPs": [],
+        "externalTrafficPolicy": "Local"
+      },
+      "datasources": {
+        "datasources.yaml": {
+          "apiVersion": 1,
+          "datasources": [
+            {
+              "name": "VictoriaMetrics",
+              "uid": "metrics",
+              "type": "prometheus",
+              "access": "proxy",
+              "isDefault": true
+            },
+            {
+              "name": "VictoriaLogs",
+              "uid": "logs",
+              "type": "victoriametrics-logs-datasource",
+              "access": "proxy"
+            }
+          ]
+        }
+      },
+      "grafana.ini": {
+        "auth.anonymous": {
+          "enabled": false
+        },
+        "users": {
+          "allow_sign_up": false
+        },
+        "analytics": {
+          "reporting_enabled": false,
+          "check_for_updates": false,
+          "check_for_plugin_updates": false
+        },
+        "server": {}
+      },
+      "dashboardProviders": {
+        "dashboardproviders.yaml": {
+          "apiVersion": 1,
+          "providers": [
+            {
+              "name": "default",
+              "orgId": 1,
+              "folder": "Infrastructure",
+              "type": "file",
+              "disableDeletion": false,
+              "editable": false,
+              "options": {
+                "path": "/var/lib/grafana/dashboards/default"
+              }
+            }
+          ]
+        }
+      },
+      "dashboardsConfigMaps": {
+        "default": "hypervisor-dashboard"
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/service/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/grafana/port",
+      "path": "/chart/values/service/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/metrics",
+      "path": "/chart/values/datasources/datasources.yaml/datasources/0/url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/web",
+      "path": "/chart/values/grafana.ini/server/root_url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/logs",
+      "path": "/chart/values/datasources/datasources.yaml/datasources/1/url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/replicas"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/resources"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/grafana",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 384
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

@@ -1,0 +1,17 @@
+- name: Inspect the prepared local source files before a backup
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop: "{{ backup.sets | dict2items | map(attribute='value.required_files') | flatten }}"
+  register: backup_required_files
+
+- name: Refuse a missing or empty canonical state before invoking Restic
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg | default(false)
+      - item.stat.size | default(0) > 0
+    fail_msg: The prepared local state must exist and be nonempty before its native capture.
+  loop: "{{ backup_required_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"

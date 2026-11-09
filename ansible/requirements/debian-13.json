@@ -1,0 +1,56 @@
+{
+  "hypervisor_platform": {
+    "distribution": "Debian",
+    "major_version": "13"
+  },
+  "image_packages": [
+    "guestfs-tools=1.52.3-1",
+    "libguestfs-tools=1:1.54.1-2+deb13u1"
+  ],
+  "cockpit_packages": [
+    "cockpit-ws=337-1+deb13u2",
+    "cockpit-bridge=337-1+deb13u2",
+    "cockpit-machines=332-1",
+    "libvirt-dbus=1.4.1-4",
+    "virtinst=1:5.0.0-5+deb13u1"
+  ],
+  "hypervisor_packages": [
+    "acl=2.3.2-2+b1",
+    "sudo=1.9.16p2-3+deb13u2",
+    "libvirt-daemon-system=11.3.0-3+deb13u3",
+    "libvirt-daemon-common=11.3.0-3+deb13u3",
+    "libvirt-clients=11.3.0-3+deb13u3",
+    "qemu-system-x86=1:10.0.13+ds-0+deb13u1",
+    "qemu-utils=1:10.0.13+ds-0+deb13u1",
+    "python3-libvirt=11.3.0-1",
+    "python3-lxml=5.4.0-1",
+    "openssh-server=1:10.0p1-7+deb13u4"
+  ],
+  "backup_packages": [
+    "bzip2=1.0.8-6",
+    "nfs-common=1:2.8.3-1"
+  ],
+  "backup_disabled_services": [
+    "rpcbind.service",
+    "rpcbind.socket"
+  ],
+  "hypervisor_network_packages": [
+    "network-manager=1.52.1-1",
+    "netplan.io=1.1.2-7",
+    "netplan-generator=1.1.2-7",
+    "libnetplan1=1.1.2-7",
+    "python3-netplan=1.1.2-7",
+    "systemd-resolved=257.13-1~deb13u1",
+    "firmware-realtek=20250410-2"
+  ],
+  "hypervisor_package_files": {
+    "/etc/apt/sources.list": {
+      "content": "",
+      "mode": "0644"
+    },
+    "/etc/apt/sources.list.d/debian.sources": {
+      "content": "Types: deb\nURIs: https://snapshot.debian.org/archive/debian/20261109T000000Z\nSuites: trixie trixie-updates\nComponents: main contrib non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\nCheck-Valid-Until: no\n\nTypes: deb\nURIs: https://snapshot.debian.org/archive/debian-security/20261109T000000Z\nSuites: trixie-security\nComponents: main contrib non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\nCheck-Valid-Until: no\n",
+      "mode": "0644"
+    }
+  }
+}

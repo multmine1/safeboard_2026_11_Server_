@@ -1,0 +1,12 @@
+- name: Read native observations for only the fixture permission targets
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
+  delegate_to: "{{ controller.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  loop: "{{ reset.backup_repository_access.parents + [reset.backup_repository_access.repository] }}"
+  register: reset_host_paths

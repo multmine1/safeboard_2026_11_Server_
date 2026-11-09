@@ -1,0 +1,19 @@
+{
+  "id": "41155bf6-5bac-5c26-b462-89f88834842c",
+  "name": "mail",
+  "type": "mail",
+  "vcpu": 2,
+  "ram_mib": 4096,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 24
+    },
+    {
+      "name": "mail",
+      "storage": "ssd",
+      "size_gib": 32
+    }
+  ]
+}

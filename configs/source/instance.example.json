@@ -1,0 +1,191 @@
+{
+  "site": {
+    "domain": "example.test",
+    "ipv4_pool": "10.80.0.0/16",
+    "network_prefix": 24,
+    "gateway_offset": 1,
+    "mac_prefix": "02",
+    "uplink": {
+      "address": "192.0.2.10/24"
+    },
+    "management_sources": [
+      "192.0.2.2/32"
+    ],
+    "dns_upstreams": [
+      "192.0.2.1"
+    ],
+    "bootstrap_public_key": "ssh-ed25519 REPLACE_WITH_VMCTL_PUBLIC_KEY",
+    "image": {
+      "path": "/srv/vm-storage/nvme/images/debian-13.qcow2"
+    },
+    "provider": {
+      "uri": "qemu+sshcmd://hypervisor/system"
+    },
+    "services": {
+      "ssh": {
+        "users": [
+          {
+            "name": "operator",
+            "groups": [
+              "sudo"
+            ],
+            "shell": "/bin/bash",
+            "password": "{{ vault_store.guest_users.operator.password_hash }}",
+            "authorized_keys": [
+              "ssh-ed25519 REPLACE_WITH_HUMAN_PUBLIC_KEY"
+            ]
+          }
+        ]
+      },
+      "dns": {
+        "soa_mailbox": "hostmaster.example.test"
+      },
+      "capacity": {
+        "hypervisor_memory_kib": 67108864,
+        "active_vm_limit_mib": 53248
+      },
+      "kubernetes": {
+        "pki": {
+          "ca": {
+            "common_name": "Example Infrastructure CA"
+          }
+        },
+        "registry": {
+          "system_ca": "/usr/local/share/ca-certificates/stand.crt"
+        }
+      },
+      "controller": {
+        "project_directory": "/REPLACE_WITH_CONTROLLER_PROJECT_DIRECTORY",
+        "known_hosts": "/REPLACE_WITH_CONTROLLER_KNOWN_HOSTS"
+      },
+      "backup": {
+        "host": {
+          "account": {
+            "name": "REPLACE_WITH_BACKUP_USER"
+          }
+        }
+      }
+    },
+    "pci_devices": {
+      "gpu": "REPLACE_WITH_GPU_PCI_ADDRESS",
+      "gpu-audio": "REPLACE_WITH_GPU_AUDIO_PCI_ADDRESS"
+    },
+    "assets": {
+      "host_installation": "../hypervisor/installation.json",
+      "installer_retain": "../../../ansible/roles/installation/files/retain.sh",
+      "installer_finish": "../../../ansible/roles/installation/files/finish.sh",
+      "host_installer": "../../../ansible/requirements/installer.json"
+    }
+  },
+  "hypervisor": {
+    "hypervisor_address": "192.0.2.2",
+    "hypervisor_alias": "hypervisor",
+    "hypervisor_user": "vmctl",
+    "hypervisor_connections": [
+      {
+        "aliases": [
+          "hypervisor"
+        ],
+        "hostname": "{{ hypervisor_address }}",
+        "host_key_alias": "{{ hypervisor_address }}",
+        "proxy_command": "/usr/bin/nc -G 1 {{ hypervisor_address }} %p || exec /usr/bin/ssh -W {{ hypervisor_fallback_hostname }}:%p bastion"
+      },
+      {
+        "aliases": [
+          "hypervisor-local"
+        ],
+        "hostname": "{{ hypervisor_address }}"
+      },
+      {
+        "aliases": [
+          "hypervisor-remote"
+        ],
+        "hostname": "{{ hypervisor_fallback_hostname }}",
+        "proxy_jump": "bastion",
+        "host_key_alias": "{{ hypervisor_address }}"
+      }
+    ],
+    "controller_user": "operator",
+    "controller_identity_file": ".ssh/hypervisor_ed25519",
+    "controller_project_directory": "/home/operator/stand",
+    "controller_provider_mirror": "{{ controller_project_directory }}/environment/.tools/tofu/providers",
+    "controller_provider_search_path": "/home/operator/stand/environment/.tools/providers",
+    "generator": {
+      "storage_root": "/srv/vm-storage",
+      "storage_classes": {
+        "nvme": {},
+        "ssd": {
+          "uuid": "REPLACE_WITH_SSD_FILESYSTEM_UUID",
+          "fstype": "ext4",
+          "opts": "defaults",
+          "passno": "2"
+        },
+        "hd": {
+          "uuid": "REPLACE_WITH_HD_FILESYSTEM_UUID",
+          "fstype": "ext4",
+          "opts": "defaults",
+          "passno": "2"
+        }
+      },
+      "vmctl_home": "/home/vmctl"
+    },
+    "hypervisor_network": {
+      "bridge": "br-wan",
+      "prefix": 24,
+      "gateway": "192.0.2.1",
+      "ethernet": {
+        "match": {
+          "macaddress": "02:00:00:00:00:01"
+        },
+        "set-name": "enp1s0"
+      },
+      "bridge_settings": {
+        "nameservers": {
+          "addresses": [
+            "192.0.2.1"
+          ]
+        },
+        "macaddress": "02:00:00:00:00:01"
+      },
+      "retired_configurations": []
+    },
+    "hypervisor_bootstrap_alias": "host-bootstrap",
+    "public_ipv4": "203.0.113.10",
+    "hypervisor_sshd": {
+      "accounts": {
+        "controller": {
+          "options": {
+            "PubkeyAcceptedAlgorithms": "ssh-ed25519"
+          },
+          "additional_authorized_keys": []
+        }
+      }
+    },
+    "controller_home": "/home/operator",
+    "hypervisor_fallback_hostname": "example.test",
+    "hypervisor_pci": {
+      "firmware_table": "/sys/firmware/acpi/tables/DMAR"
+    },
+    "hypervisor_installation": {
+      "disks": {
+        "nvme": {
+          "device": "/dev/disk/by-id/REPLACE_WITH_NVME_DISK_ID",
+          "serial": "REPLACE_WITH_NVME_SERIAL",
+          "size_bytes": 107374182400
+        },
+        "ssd": {
+          "device": "/dev/disk/by-id/REPLACE_WITH_SSD_DISK_ID",
+          "serial": "REPLACE_WITH_SSD_SERIAL",
+          "size_bytes": 107374182400
+        },
+        "hd": {
+          "device": "/dev/disk/by-id/REPLACE_WITH_HD_DISK_ID",
+          "serial": "REPLACE_WITH_HD_SERIAL",
+          "size_bytes": 107374182400
+        }
+      },
+      "previous_root": "/dev/disk/by-uuid/REPLACE_WITH_PREVIOUS_ROOT_FILESYSTEM_UUID",
+      "firmware": []
+    }
+  }
+}

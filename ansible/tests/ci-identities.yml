@@ -1,0 +1,197 @@
+- name: Exercise CI identity recovery using disposable Forgejo identities
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  tasks:
+    - name: Read the prepared application origins and CI requirements
+      ansible.builtin.include_vars:
+        file: "{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: ../../configs/generated/k0s/applications/deployment.json, name: apps}
+        - {file: ../../k0s/requirements/components.json, name: components}
+
+    - name: Bind the native test inputs without changing Vault
+      ansible.builtin.set_fact:
+        forgejo_admin: "{{ vault_store.applications[apps.applications.forgejo.namespace]['forgejo-admin'].stringData }}"
+        forgejo_origin: "{{ apps.applications.ci.guest.registration.instance | regex_replace('/$', '') }}"
+        ci_test_name: "ci-identity-test-{{ lookup('ansible.builtin.password', '/dev/null', length=12, chars=['ascii_lowercase', 'digits']) }}"
+      no_log: true
+
+    - name: Exercise the declared API through the normal hypervisor path
+      delegate_to: "{{ controller.admin_alias }}"
+      vars:
+        ansible_python_interpreter: "{{ controller.python }}"
+        ci_credentials_token_spec: "{{ components.ci.api_token | combine({'name': ci_test_name}) }}"
+        ci_credentials_runner_spec: "{{ components.ci.runner_registration | combine({'name': ci_test_name}) }}"
+      block:
+        - name: Create a temporary public trust anchor
+          ansible.builtin.tempfile:
+            state: file
+          register: forgejo_ca
+
+        - name: Trust only the declared CA for the native test
+          ansible.builtin.copy:
+            content: "{{ vault_store.pki.ca.certificate }}"
+            dest: "{{ forgejo_ca.path }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Register the isolated token and runner
+          ansible.builtin.include_role:
+            name: ci_credentials
+          vars:
+            ci_credentials_api_before: {preserved: unrelated-test-value}
+            ci_credentials_runner_before: {}
+
+        - name: Remember only identities created by this test
+          ansible.builtin.set_fact:
+            ci_test_first_api: "{{ ci_credentials_api }}"
+            ci_test_first_runner: "{{ ci_credentials_runner }}"
+          no_log: true
+
+        - name: Reconcile the same offline runner
+          ansible.builtin.include_role:
+            name: ci_credentials
+          vars:
+            ci_credentials_api_before: "{{ ci_test_first_api }}"
+            ci_credentials_runner_before: "{{ ci_test_first_runner }}"
+
+        - name: Require a stable offline registration and unrelated fields
+          ansible.builtin.assert:
+            that:
+              - not ci_credentials_token_missing
+              - not ci_credentials_runner_missing
+              - ci_credentials_api == ci_test_first_api
+              - ci_credentials_api.preserved == 'unrelated-test-value'
+              - ci_credentials_runner == ci_test_first_runner
+              - ci_credentials_runner_identity.json.status == 'offline'
+          no_log: true
+
+        - name: Remove only the isolated runner to reproduce missing database state
+          ansible.builtin.uri:
+            url: "{{ forgejo_origin }}/api/v1/user/actions/runners/{{ ci_test_first_runner.id }}"
+            method: DELETE
+            headers: {Authorization: "token {{ ci_test_first_api.api_token }}"}
+            ca_path: "{{ forgejo_ca.path }}"
+            status_code: 204
+          changed_when: true
+          no_log: true
+
+        - name: Revoke only the isolated token while retaining its old in-memory value
+          ansible.builtin.uri:
+            url: "{{ forgejo_origin }}/api/v1/users/{{ forgejo_admin.username | urlencode }}/tokens/{{ ci_test_name }}"
+            method: DELETE
+            url_username: "{{ forgejo_admin.username }}"
+            url_password: "{{ forgejo_admin.password }}"
+            force_basic_auth: true
+            ca_path: "{{ forgejo_ca.path }}"
+            status_code: 204
+          changed_when: true
+          no_log: true
+
+        - name: Recover identities that no longer exist on the server
+          ansible.builtin.include_role:
+            name: ci_credentials
+          vars:
+            ci_credentials_api_before: "{{ ci_test_first_api }}"
+            ci_credentials_runner_before: "{{ ci_test_first_runner }}"
+
+        - name: Require new credentials and retain them for the reused-ID case
+          ansible.builtin.assert:
+            that:
+              - ci_credentials_token_missing
+              - ci_credentials_runner_missing
+              - ci_credentials_api.api_token != ci_test_first_api.api_token
+              - ci_credentials_runner.uuid != ci_test_first_runner.uuid
+              - ci_credentials_api.preserved == 'unrelated-test-value'
+          no_log: true
+
+        - name: Remember the replacement registration
+          ansible.builtin.set_fact:
+            ci_test_recovered_api: "{{ ci_credentials_api }}"
+            ci_test_recovered_runner: "{{ ci_credentials_runner }}"
+          no_log: true
+
+        - name: Reconcile a stale UUID whose database ID belongs to another runner
+          ansible.builtin.include_role:
+            name: ci_credentials
+          vars:
+            ci_credentials_api_before: "{{ ci_test_recovered_api }}"
+            ci_credentials_runner_before: "{{ ci_test_first_runner | combine({'id': ci_test_recovered_runner.id}) }}"
+
+        - name: Require a new registration without rotating the valid API token
+          ansible.builtin.assert:
+            that:
+              - not ci_credentials_token_missing
+              - ci_credentials_runner_missing
+              - ci_credentials_api == ci_test_recovered_api
+              - ci_credentials_runner.id != ci_test_recovered_runner.id
+          no_log: true
+
+        - name: Require the unrelated runner behind the reused ID to remain present
+          ansible.builtin.uri:
+            url: "{{ forgejo_origin }}/api/v1/user/actions/runners/{{ ci_test_recovered_runner.id }}"
+            headers: {Authorization: "token {{ ci_test_recovered_api.api_token }}"}
+            ca_path: "{{ forgejo_ca.path }}"
+          no_log: true
+
+        - name: Retain the last runner before recovering an unavailable token secret
+          ansible.builtin.set_fact:
+            ci_test_last_runner: "{{ ci_credentials_runner }}"
+          no_log: true
+
+        - name: Recover an invalid saved secret while its declared token name still exists
+          ansible.builtin.include_role:
+            name: ci_credentials
+          vars:
+            ci_credentials_api_before: "{{ ci_test_first_api }}"
+            ci_credentials_runner_before: "{{ ci_test_last_runner }}"
+
+        - name: Require replacement of only the unavailable API secret
+          ansible.builtin.assert:
+            that:
+              - ci_credentials_token_missing
+              - ci_credentials_token_retired.status == 204
+              - ci_credentials_api.api_token != ci_test_recovered_api.api_token
+              - not ci_credentials_runner_missing
+              - ci_credentials_runner == ci_test_last_runner
+          no_log: true
+      always:
+        - name: Remove only runner IDs created by this native test
+          ansible.builtin.uri:
+            url: "{{ forgejo_origin }}/api/v1/user/actions/runners/{{ item }}"
+            method: DELETE
+            headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+            ca_path: "{{ forgejo_ca.path }}"
+            status_code: [204, 404]
+          loop: >-
+            {{ [ci_test_first_runner.id | default(0), ci_test_recovered_runner.id | default(0), ci_test_last_runner.id | default(0),
+                ci_credentials_runner_created.json.id | default(0)] | unique | reject('equalto', 0) | list }}
+          register: ci_test_runner_removed
+          changed_when: ci_test_runner_removed.status == 204
+          no_log: true
+
+        - name: Remove only this test's scoped token
+          ansible.builtin.uri:
+            url: "{{ forgejo_origin }}/api/v1/users/{{ forgejo_admin.username | urlencode }}/tokens/{{ ci_test_name }}"
+            method: DELETE
+            url_username: "{{ forgejo_admin.username }}"
+            url_password: "{{ forgejo_admin.password }}"
+            force_basic_auth: true
+            ca_path: "{{ forgejo_ca.path }}"
+            status_code: [204, 404]
+          when: forgejo_ca.path is defined
+          register: ci_test_token_removed
+          changed_when: ci_test_token_removed.status == 204
+          no_log: true
+
+        - name: Remove the temporary public CA
+          ansible.builtin.file:
+            path: "{{ forgejo_ca.path }}"
+            state: absent
+          when: forgejo_ca.path is defined

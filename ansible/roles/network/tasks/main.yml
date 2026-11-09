@@ -1,0 +1,55 @@
+- name: Create the prepared network directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ network_plan.directory_mode }}"
+  loop: "{{ network_plan.directories }}"
+
+- name: Disable replaced network services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ network_plan.disable_services }}"
+
+- name: Remove superseded network files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ network_plan.remove_files }}"
+
+- name: Persist the prepared network files
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ item.key }}"
+    mode: "{{ network_plan.file_modes[item.key] | default(network_plan.file_mode) }}"
+    backup: true
+  loop: "{{ network_plan.files | dict2items | rejectattr('key', 'equalto', network_plan.firewall_path) | list }}"
+  register: network_files
+
+- name: Apply the prepared kernel settings
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: "{{ network_plan.sysctl_file }}"
+    sysctl_set: true
+    reload: false
+  loop: "{{ network_plan.sysctl | dict2items }}"
+
+- name: Apply the prepared firewall without changing unrelated network components
+  ansible.builtin.include_tasks: firewall.yml
+
+- name: Apply the changed netplan file
+  ansible.builtin.command: netplan apply
+  when: network_files.results | selectattr('item.key', 'equalto', network_plan.network_path) | selectattr('changed') | list | length > 0
+  changed_when: network_files.changed
+
+- name: Apply the prepared UFW rules
+  ansible.builtin.include_tasks: ufw.yml
+  when: network_plan.ufw is defined
+
+- name: Keep the persisted firewall available at boot
+  ansible.builtin.systemd_service:
+    name: "{{ network_plan.firewall_service }}"
+    state: started
+    enabled: true

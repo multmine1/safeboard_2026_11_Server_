@@ -1,0 +1,299 @@
+rule_files:
+- ../assets/monitoring/alerts.json
+evaluation_interval: 30s
+group_eval_order:
+- host-probe-signals
+- availability
+- hypervisor
+tests:
+- name: Healthy host and collector
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: 1x12
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: 1x12
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HypervisorPathUnavailable
+    exp_alerts: []
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostProbeUnavailable
+    exp_alerts: []
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: CockpitEndpointUnavailable
+    exp_alerts: []
+- name: Collector endpoint fails while host TCP answers
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: '0x12'
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: 1x12
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        job: hypervisor
+        instance: host
+      exp_annotations: &id002
+        summary: Host metrics endpoint is unavailable while the independent TCP probe succeeds
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HypervisorPathUnavailable
+    exp_alerts: []
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostProbeUnavailable
+    exp_alerts: []
+- name: Both observer paths fail
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: '0x12'
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: '0x12'
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HypervisorPathUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: hypervisor
+        instance: host
+      exp_annotations:
+        summary: Both host endpoints are unreachable from their observers; host or network path may be unavailable
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []
+- name: Only the independent Cockpit endpoint fails
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: 1x12
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: '0x12'
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: CockpitEndpointUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        job: hypervisor
+        instance: host
+      exp_annotations:
+        summary: The host metrics endpoint responds but the independent Cockpit TCP probe fails
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HypervisorPathUnavailable
+    exp_alerts: []
+- name: Missing probe cannot prove host or collector-only failure
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: '0x12'
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 2
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostProbeUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations: &id001
+        summary: The independent host probe is missing or stale; host reachability is unknown
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HypervisorPathUnavailable
+    exp_alerts: []
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []
+- name: Old failed probe expires instead of claiming continued host failure
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: '0x12'
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: 0 _x12
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 4m
+    exp_samples:
+    - labels: '{}'
+      value: 2
+  alert_rule_test:
+  - eval_time: 4m
+    groupname: hypervisor
+    alertname: HostProbeUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations: *id001
+  - eval_time: 4m
+    groupname: hypervisor
+    alertname: HypervisorPathUnavailable
+    exp_alerts: []
+  - eval_time: 4m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []
+- name: Short collector interruption resolves before the hold time
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: 1 0 0 1x9
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: 1x12
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []
+- name: Collector failure resolves after a successful scrape
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: 0x6 1x6
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: 1x13
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 5m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  alert_rule_test:
+  - eval_time: 5m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        job: hypervisor
+        instance: host
+      exp_annotations: *id002
+- name: Crash states exclude clean unknown forced off and non-crash paused states
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: 1x12
+  - series: skeleton_host_probe_success{observer="telemetry"}
+    values: 1x12
+  - series: libvirt_state_state{job="hypervisor",instance="host",domain_name="crashed"}
+    values: 6x12
+  - series: libvirt_state_reason{job="hypervisor",instance="host",domain_name="crashed"}
+    values: 1x12
+  - series: libvirt_state_state{job="hypervisor",instance="host",domain_name="crashed-off"}
+    values: 5x12
+  - series: libvirt_state_reason{job="hypervisor",instance="host",domain_name="crashed-off"}
+    values: 3x12
+  - series: libvirt_state_state{job="hypervisor",instance="host",domain_name="clean-off"}
+    values: 5x12
+  - series: libvirt_state_reason{job="hypervisor",instance="host",domain_name="clean-off"}
+    values: 1x12
+  - series: libvirt_state_state{job="hypervisor",instance="host",domain_name="unknown-off"}
+    values: 5x12
+  - series: libvirt_state_reason{job="hypervisor",instance="host",domain_name="unknown-off"}
+    values: '0x12'
+  - series: libvirt_state_state{job="hypervisor",instance="host",domain_name="forced-off"}
+    values: 5x12
+  - series: libvirt_state_reason{job="hypervisor",instance="host",domain_name="forced-off"}
+    values: 2x12
+  - series: libvirt_state_state{job="hypervisor",instance="host",domain_name="paused"}
+    values: 3x12
+  - series: libvirt_state_reason{job="hypervisor",instance="host",domain_name="paused"}
+    values: 3x12
+  metricsql_expr_test:
+  - expr: max(skeleton:host_probe:status)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: VirtualMachineCrashed
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: hypervisor
+        instance: host
+        domain_name: crashed
+      exp_annotations: &id003
+        summary: Libvirt reports a guest crash
+    - exp_labels:
+        severity: critical
+        job: hypervisor
+        instance: host
+        domain_name: crashed-off
+      exp_annotations: *id003
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: VirtualMachineFailed
+    exp_alerts: []
+- name: A stale stored classification must not mask missing current observations
+  interval: 30s
+  input_series:
+  - series: up{job="hypervisor",instance="host"}
+    values: '0x12'
+  - series: skeleton:host_probe:status{generation="old"}
+    values: 1 _x12
+  alert_rule_test:
+  - eval_time: 3m
+    groupname: hypervisor
+    alertname: HostCollectorUnavailable
+    exp_alerts: []

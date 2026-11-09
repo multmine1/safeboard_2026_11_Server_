@@ -1,0 +1,45 @@
+- name: Create only repository parents below the verified physical mount
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0710'
+  loop: "{{ backup.repository_parents }}"
+  when: item != backup.mount
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+
+- name: Give the SFTP account only traversal on repository ancestors
+  ansible.posix.acl:
+    path: "{{ item }}"
+    etype: user
+    entity: "{{ backup.hypervisor.storage_user }}"
+    permissions: x
+    state: present
+  loop: "{{ backup.repository_parents }}"
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+
+- name: Give the SFTP account ownership only within the declared repository
+  ansible.builtin.file:
+    path: "{{ backup.repository }}"
+    state: directory
+    owner: "{{ backup.hypervisor.storage_user }}"
+    group: "{{ backup.hypervisor.storage_user }}"
+    recurse: true
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+
+- name: Keep the remote repository directory private
+  ansible.builtin.file:
+    path: "{{ backup.repository }}"
+    mode: "{{ vault_directory_mode }}"
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"

@@ -1,0 +1,181 @@
+{
+  "name": "logs",
+  "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+  "enabled": true,
+  "component": "victoria-logs-single",
+  "chart": {
+    "values": {
+      "server": {
+        "fullnameOverride": "logs",
+        "mode": "deployment",
+        "retentionPeriod": "7d",
+        "persistentVolume": {
+          "enabled": true,
+          "existingClaim": "logs-data"
+        },
+        "service": {
+          "clusterIP": "",
+          "externalIPs": [],
+          "externalTrafficPolicy": "Local"
+        }
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/server/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/server/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/server/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/server/service/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/logs/port",
+      "path": "/chart/values/server/service/servicePort"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/data",
+      "path": "/guest/directories/0/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/data",
+      "path": "/cluster_resources/0/spec/local/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/server/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/server/resources"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/logs",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "storage": {
+    "volumes": {
+      "data": {
+        "mount": "data",
+        "directory": "logs"
+      }
+    }
+  },
+  "guest": {
+    "directories": [
+      {
+        "owner": "1000",
+        "group": "1000",
+        "mode": "0750"
+      }
+    ]
+  },
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "logs-data"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "64Gi"
+        },
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "logs-data"
+        },
+        "local": {},
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "logs-data"
+      },
+      "spec": {
+        "volumeName": "logs-data",
+        "storageClassName": "",
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "64Gi"
+          }
+        }
+      }
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 512
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

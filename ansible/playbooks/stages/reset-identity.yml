@@ -1,0 +1,29 @@
+- name: Inspect host administrator and removable account identities
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the preserved administrator from the hypervisor account database
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ reset.controller_user }}"
+      register: reset_admin_account
+
+    - name: Read the declared removable account from the native account database
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ reset.account.name }}"
+        fail_key: false
+      register: reset_removable_account
+
+    - name: Require the removable account to match the reviewed home and identity
+      ansible.builtin.assert:
+        that:
+          - reset.account.name not in ['root', reset.controller_user]
+          - reset_removable_account.ansible_facts.getent_passwd[reset.account.name][1] | int != 0
+          - >-
+            reset_removable_account.ansible_facts.getent_passwd[reset.account.name][1] | int !=
+            reset_admin_account.ansible_facts.getent_passwd[reset.controller_user][1] | int
+          - reset_removable_account.ansible_facts.getent_passwd[reset.account.name][4] == reset.account.home
+        fail_msg: The native account differs from the reviewed disposable libvirt account.
+      when: reset_removable_account.ansible_facts.getent_passwd[reset.account.name] is not none

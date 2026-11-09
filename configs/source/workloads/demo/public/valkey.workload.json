@@ -1,0 +1,218 @@
+{
+  "name": "valkey",
+  "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+  "enabled": true,
+  "component": "valkey",
+  "secrets": {
+    "valkey-tls": {
+      "provider": "certificate",
+      "services": [
+        "cache"
+      ]
+    },
+    "valkey-auth": {
+      "provider": "vault"
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "valkey"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "valkey"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "valkey"
+            }
+          },
+          "spec": {
+            "securityContext": {
+              "runAsUser": 1000,
+              "runAsGroup": 1000,
+              "fsGroup": 1000
+            },
+            "containers": [
+              {
+                "name": "valkey",
+                "args": [
+                  "valkey-server",
+                  "--port",
+                  "0",
+                  "--tls-port",
+                  "6379",
+                  "--tls-cert-file",
+                  "/tls/tls.crt",
+                  "--tls-key-file",
+                  "/tls/tls.key",
+                  "--tls-ca-cert-file",
+                  "/tls/ca.crt",
+                  "--tls-auth-clients",
+                  "no",
+                  "--aclfile",
+                  "/auth/users.acl",
+                  "--save",
+                  "",
+                  "--appendonly",
+                  "no",
+                  "--maxmemory",
+                  "128mb",
+                  "--maxmemory-policy",
+                  "noeviction"
+                ],
+                "ports": [
+                  {
+                    "name": "tls",
+                    "containerPort": 6379
+                  }
+                ],
+                "readinessProbe": {
+                  "tcpSocket": {
+                    "port": "tls"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "tls",
+                    "mountPath": "/tls",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "auth",
+                    "mountPath": "/auth",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "data",
+                    "mountPath": "/data"
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "tls",
+                "secret": {
+                  "secretName": "valkey-tls"
+                }
+              },
+              {
+                "name": "auth",
+                "secret": {
+                  "secretName": "valkey-auth"
+                }
+              },
+              {
+                "name": "data",
+                "emptyDir": {}
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "valkey"
+      },
+      "spec": {
+        "externalIPs": [],
+        "externalTrafficPolicy": "Local",
+        "selector": {
+          "app.kubernetes.io/name": "valkey"
+        },
+        "ports": [
+          {
+            "name": "tls",
+            "port": 6379,
+            "targetPort": "tls"
+          }
+        ]
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/resources/0/spec/template/spec/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/resources/0/spec/template/metadata/labels/skeleton.vm"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/resources/0/spec/template/metadata/annotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/image",
+      "path": "/resources/0/spec/template/spec/containers/0/image"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/resources/1/spec/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/cache/port",
+      "path": "/resources/1/spec/ports/0/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/resources/0/spec/replicas"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/resources/0/spec/template/spec/containers/0/resources"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/valkey",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 256
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

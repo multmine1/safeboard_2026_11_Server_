@@ -1,0 +1,21 @@
+- name: Read the host's encrypted administrator
+  ansible.builtin.set_fact:
+    application_host_secrets: "{{ {'guest_admin': vault_store.guests[application.vm]} }}"
+    application_host_context:
+      vm: "{{ application.vm }}"
+      plan: "{{ application.guest }}"
+  no_log: true
+
+- name: Apply the prepared host requirements
+  ansible.builtin.include_role:
+    name: application_host
+    apply:
+      delegate_to: "{{ hostvars['localhost'].application_host_context.vm }}"
+      become: true
+  vars:
+    application_host_plan: "{{ hostvars['localhost'].application_host_context.plan }}"
+    application_host_guest: "{{ hostvars[hostvars['localhost'].application_host_context.vm] }}"
+    ansible_user: "{{ hostvars[hostvars['localhost'].application_host_context.vm].access.admin_user }}"
+    ansible_private_key: "{{ hostvars['localhost'].application_host_secrets.guest_admin.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].application_host_secrets.guest_admin.key_passphrase }}"
+    ansible_become_password: "{{ hostvars['localhost'].application_host_secrets.guest_admin.sudo_password }}"

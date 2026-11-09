@@ -1,0 +1,44 @@
+{
+  "hypervisor_platform": {
+    "distribution": "Ubuntu",
+    "major_version": "26"
+  },
+  "image_packages": [
+    "guestfs-tools=1.54.0-2ubuntu1",
+    "libguestfs-tools=1:1.58.1-3ubuntu3"
+  ],
+  "cockpit_packages": [
+    "cockpit-ws=360-1",
+    "cockpit-bridge=360-1",
+    "cockpit-machines=351-1",
+    "libvirt-dbus=1.4.1-4build1",
+    "virtinst=1:5.1.0-1"
+  ],
+  "hypervisor_packages": [
+    "acl=2.3.2-2",
+    "sudo=1.9.17p2-1ubuntu3.2",
+    "libvirt-daemon-system=12.0.0-1ubuntu5.6",
+    "libvirt-daemon-common=12.0.0-1ubuntu5.6",
+    "libvirt-clients=12.0.0-1ubuntu5.6",
+    "qemu-system-x86=1:10.2.1+ds-1ubuntu3.3",
+    "qemu-utils=1:10.2.1+ds-1ubuntu3.3",
+    "python3-libvirt=12.0.0-1build1",
+    "python3-lxml=6.0.2-1ubuntu0.1",
+    "openssh-server=1:10.2p1-2ubuntu3.8"
+  ],
+  "backup_packages": [
+    "bzip2=1.0.8-6ubuntu0.1",
+    "nfs-common=1:2.8.5-1ubuntu1"
+  ],
+  "backup_disabled_services": [
+    "rpcbind.service",
+    "rpcbind.socket"
+  ],
+  "hypervisor_network_packages": [
+    "network-manager=1.54.3-2ubuntu3.1",
+    "netplan.io=1.2-1ubuntu5.1",
+    "netplan-generator=1.2-1ubuntu5.1",
+    "libnetplan1=1.2-1ubuntu5.1",
+    "python3-netplan=1.2-1ubuntu5.1"
+  ]
+}

@@ -1,0 +1,54 @@
+- name: Prepare the dedicated backup identity
+  ansible.builtin.import_tasks: backup-account.yml
+
+- name: Create only the repository parents below the verified mount
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0710'
+  loop: "{{ backup.repository_parents }}"
+  when: item != backup.mount
+
+- name: Allow only traversal of repository ancestors for the prepared identities
+  ansible.posix.acl:
+    path: "{{ item.0 }}"
+    etype: user
+    entity: "{{ item.1 }}"
+    permissions: x
+    state: present
+  loop: "{{ backup.repository_parents | product(backup.repository_access.users) | list }}"
+
+- name: Assign ownership of only the repository root to the service account
+  ansible.builtin.file:
+    path: "{{ backup.repository }}"
+    state: directory
+    owner: "{{ backup.repository_access.owner }}"
+    group: "{{ backup.repository_access.group }}"
+    mode: "{{ backup.repository_access.directory_mode }}"
+
+- name: Assign the declared repository group without rewriting per-file ownership
+  ansible.builtin.file:
+    path: "{{ backup.repository }}"
+    group: "{{ backup.repository_access.group }}"
+    recurse: true
+    follow: false
+
+- name: Apply the compiled native group-accessible repository modes
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop: "{{ backup.repository_access.permission_argv }}"
+  register: hypervisor_backup_permission_changes
+  changed_when: hypervisor_backup_permission_changes.stdout | length > 0
+
+- name: Preserve both writers through named and inherited ACLs
+  ansible.posix.acl:
+    path: "{{ backup.repository }}"
+    etype: user
+    entity: "{{ item.0 }}"
+    permissions: rwX
+    default: "{{ item.1 }}"
+    recursive: true
+    follow: false
+    recalculate_mask: no_mask
+    state: present
+  loop: "{{ backup.repository_access.users | product([false, true]) | list }}"

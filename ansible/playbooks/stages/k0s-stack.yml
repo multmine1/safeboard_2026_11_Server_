@@ -1,0 +1,32 @@
+- name: Create the native manifest stack directory
+  ansible.builtin.file:
+    path: "{{ stack.directory }}"
+    state: directory
+    mode: "{{ cluster.settings.deployment.directory_mode }}"
+
+- name: Publish the prepared stack for the k0s Manifest Deployer
+  ansible.builtin.copy:
+    src: "{{ generated }}/{{ item.value }}"
+    dest: "{{ stack.directory }}/{{ item.key }}"
+    mode: "{{ cluster.settings.deployment.file_mode }}"
+  loop: "{{ stack.files | dict2items }}"
+
+- name: Wait for the Manifest Deployer to publish this router revision
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, get, "daemonset/router-{{ stack.id }}",
+           --namespace, "{{ cluster.settings.router_runtime.namespace }}", -o,
+           'jsonpath={.spec.template.metadata.annotations.skeleton\.config-hash}']
+  when: stack.id is defined
+  register: router_revision
+  until: router_revision.rc == 0 and router_revision.stdout == stack.fingerprint
+  retries: "{{ cluster.settings.deployment.api_retries }}"
+  delay: "{{ cluster.settings.deployment.api_delay }}"
+  changed_when: false
+
+- name: Wait for this router's managed DNS and host configuration
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, rollout, status,
+           "daemonset/router-{{ stack.id }}", --namespace, "{{ cluster.settings.router_runtime.namespace }}",
+           "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  when: stack.id is defined
+  changed_when: false

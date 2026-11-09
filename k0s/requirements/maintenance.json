@@ -1,0 +1,16 @@
+{
+  "helm": {
+    "version": "4.3.1",
+    "url": "https://get.helm.sh/helm-v4.3.1-linux-amd64.tar.gz",
+    "checksum": "sha256:0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b",
+    "cache": "/var/cache/skeleton/helm-v4.3.1-linux-amd64.tar.gz",
+    "directory": "/usr/local/bin",
+    "include": [
+      "linux-amd64/helm"
+    ],
+    "extra_opts": [
+      "--strip-components=1"
+    ],
+    "binary": "/usr/local/bin/helm"
+  }
+}

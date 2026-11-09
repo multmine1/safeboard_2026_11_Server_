@@ -1,0 +1,14 @@
+{
+  "id": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+  "name": "observe",
+  "type": "observability",
+  "vcpu": 2,
+  "ram_mib": 2048,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 16
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+- name: Create filesystems on the declared guest data disks
+  community.general.filesystem:
+    dev: "{{ item.src }}"
+    fstype: "{{ item.fstype }}"
+  loop: "{{ guest_plan.mounts }}"
+
+- name: Mount the guest data disks
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: "{{ item.fstype }}"
+    opts: "{{ item.opts }}"
+    state: mounted
+  loop: "{{ guest_plan.mounts }}"

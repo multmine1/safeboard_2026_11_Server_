@@ -1,0 +1,48 @@
+- name: Create the prepared Registry trust directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ settings.deployment.directory_mode }}"
+  loop:
+    - "{{ registry_trust.directory }}"
+    - "{{ registry_trust.system_ca | dirname }}"
+    - "{{ registry_trust.dropin | dirname }}"
+
+- name: Install the public CA for the OS and containerd
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ settings.pki.public_ca_file }}"
+    dest: "{{ item }}"
+    mode: "{{ settings.deployment.file_mode }}"
+  loop:
+    - "{{ registry_trust.system_ca }}"
+    - "{{ registry_trust.ca_file }}"
+  register: registry_ca
+
+- name: Update system trust when the CA changes
+  ansible.builtin.command: update-ca-certificates
+  when: registry_ca.changed
+  changed_when: true
+
+- name: Configure the prepared containerd 2 Registry endpoint
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.path }}"
+    mode: "{{ settings.deployment.file_mode }}"
+  loop:
+    - {path: "{{ registry_trust.directory }}/hosts.toml", content: "{{ registry_trust.hosts_content }}"}
+    - {path: "{{ registry_trust.dropin }}", content: "{{ registry_trust.dropin_content }}"}
+
+- name: Configure the Docker client CA on declared Docker hosts
+  when: "'docker.io' in packages"
+  block:
+    - name: Create the Docker Registry certificate directory
+      ansible.builtin.file:
+        path: "{{ registry_trust.docker_directory }}"
+        state: directory
+        mode: "{{ settings.deployment.directory_mode }}"
+
+    - name: Install only the public CA for Docker
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../{{ settings.pki.public_ca_file }}"
+        dest: "{{ registry_trust.docker_ca_file }}"
+        mode: "{{ settings.deployment.file_mode }}"

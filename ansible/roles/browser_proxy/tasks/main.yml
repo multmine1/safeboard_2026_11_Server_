@@ -1,0 +1,64 @@
+- name: Read the Mac session owner
+  ansible.builtin.command: id -u
+  register: browser_proxy_uid
+  changed_when: false
+
+- name: Create the native user agent directory
+  ansible.builtin.file:
+    path: "{{ browser_proxy_agent | dirname }}"
+    state: directory
+    mode: '0755'
+  when: browser_proxy_state == 'present'
+
+- name: Prepare the loopback PAC server's native user agent
+  ansible.builtin.template:
+    src: agent.plist.j2
+    dest: "{{ browser_proxy_agent }}"
+    mode: '0644'
+  register: browser_proxy_definition
+  when: browser_proxy_state == 'present'
+
+- name: Read the current native agent state
+  ansible.builtin.command: "launchctl print gui/{{ browser_proxy_uid.stdout }}/{{ browser_proxy_settings.label }}"
+  register: browser_proxy_loaded
+  changed_when: false
+  failed_when: false
+
+- name: Unload the changed or retired agent
+  ansible.builtin.command: "launchctl bootout gui/{{ browser_proxy_uid.stdout }}/{{ browser_proxy_settings.label }}"
+  changed_when: true
+  when: browser_proxy_loaded.rc == 0 and (browser_proxy_state == 'absent' or browser_proxy_definition.changed)
+
+- name: Start the native loopback PAC server
+  ansible.builtin.command:
+    argv: [launchctl, bootstrap, "gui/{{ browser_proxy_uid.stdout }}", "{{ browser_proxy_agent }}"]
+  changed_when: true
+  when: browser_proxy_state == 'present' and (browser_proxy_loaded.rc != 0 or browser_proxy_definition.changed)
+
+- name: Wait for the generated PAC before enabling browser access
+  ansible.builtin.uri:
+    url: "{{ browser_proxy_settings.url }}"
+    return_content: true
+    use_proxy: false
+  register: browser_proxy_http
+  until: browser_proxy_http.status == 200 and browser_proxy_http.content == browser_proxy_settings.pac
+  retries: 5
+  delay: 1
+  when: browser_proxy_state == 'present'
+
+- name: Read the configured Mac network services
+  ansible.builtin.command: networksetup -listallnetworkservices
+  register: browser_proxy_networks
+  changed_when: false
+
+- name: Configure automatic proxy selection for enabled network services
+  ansible.builtin.include_tasks: network.yml
+  loop: "{{ browser_proxy_networks.stdout_lines[1:] | reject('match', '^\\*') | list }}"
+  loop_control:
+    loop_var: browser_proxy_network
+
+- name: Remove the retired native agent definition
+  ansible.builtin.file:
+    path: "{{ browser_proxy_agent }}"
+    state: absent
+  when: browser_proxy_state == 'absent'

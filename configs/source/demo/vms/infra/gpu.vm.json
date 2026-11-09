@@ -1,0 +1,24 @@
+{
+  "id": "a5b90567-01b5-5f25-8917-81182a915a2f",
+  "name": "lab",
+  "type": "gpu",
+  "vcpu": 4,
+  "ram_mib": 16384,
+  "pci_devices": ["gpu", "gpu-audio"],
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 32
+    },
+    {
+      "name": "data",
+      "storage": "ssd",
+      "size_gib": 128
+    }
+  ],
+  "domain": {
+    "running": false,
+    "autostart": false
+  }
+}

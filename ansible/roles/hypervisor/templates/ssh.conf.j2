@@ -1,0 +1,19 @@
+{% for connection in ssh_connections %}
+Host {{ connection.aliases | join(' ') }}
+    HostName {{ connection.hostname }}
+{% if connection.proxy_command is defined and ssh_use_fallback | default(false) %}
+    ProxyCommand {{ connection.proxy_command }}
+{% endif %}
+{% if connection.proxy_jump is defined %}
+    ProxyJump {{ connection.proxy_jump }}
+{% endif %}
+{% if connection.host_key_alias is defined %}
+    HostKeyAlias {{ connection.host_key_alias }}
+{% endif %}
+{% endfor %}
+Host {{ ssh_connections | map(attribute='aliases') | flatten | unique | join(' ') }}
+    User {{ hypervisor_user }}
+    IdentityFile {{ identity_file | to_json }}
+    IdentitiesOnly yes
+    IdentityAgent {{ identity_agent | default('none') }}
+    StrictHostKeyChecking yes

@@ -1,0 +1,29 @@
+{
+  "id": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+  "name": "db",
+  "type": "data",
+  "vcpu": 2,
+  "ram_mib": 6144,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 24
+    },
+    {
+      "name": "fast",
+      "storage": "nvme",
+      "size_gib": 128
+    },
+    {
+      "name": "data",
+      "storage": "ssd",
+      "size_gib": 256
+    },
+    {
+      "name": "archive",
+      "storage": "hd",
+      "size_gib": 256
+    }
+  ]
+}

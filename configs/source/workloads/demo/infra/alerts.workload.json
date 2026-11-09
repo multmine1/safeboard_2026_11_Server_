@@ -1,0 +1,268 @@
+{
+  "name": "alerts",
+  "vm": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+  "enabled": true,
+  "component": "victoria-metrics-alert",
+  "depends_on": [
+    "metrics"
+  ],
+  "endpoints": {
+    "metrics": {
+      "connection": "metrics",
+      "scheme": "http",
+      "path": "/"
+    }
+  },
+  "chart": {
+    "values": {
+      "server": {
+        "fullnameOverride": "alerts",
+        "service": {
+          "externalIPs": [],
+          "externalTrafficPolicy": "Local"
+        },
+        "config": {},
+        "datasource": {},
+        "remoteWrite": {},
+        "remoteRead": {}
+      },
+      "alertmanager": {
+        "enabled": true,
+        "fullnameOverride": "alertmanager",
+        "service": {
+          "externalIPs": [],
+          "externalTrafficPolicy": "Local"
+        },
+        "extraVolumes": [
+          {
+            "name": "smtp",
+            "secret": {
+              "secretName": "alerts-smtp"
+            }
+          },
+          {
+            "name": "trust",
+            "secret": {
+              "secretName": "alerts-ca"
+            }
+          }
+        ],
+        "extraVolumeMounts": [
+          {
+            "name": "smtp",
+            "mountPath": "/smtp",
+            "readOnly": true
+          },
+          {
+            "name": "trust",
+            "mountPath": "/trust",
+            "readOnly": true
+          }
+        ],
+        "config": {
+          "global": {
+            "smtp_auth_password_file": "/smtp/password",
+            "smtp_require_tls": true,
+            "smtp_tls_config": {
+              "ca_file": "/trust/ca.crt"
+            }
+          },
+          "route": {
+            "receiver": "mail",
+            "group_by": [
+              "alertname",
+              "vm_id"
+            ],
+            "group_wait": "30s",
+            "group_interval": "5m",
+            "repeat_interval": "12h"
+          },
+          "receivers": [
+            {
+              "name": "mail",
+              "email_configs": [
+                {
+                  "send_resolved": true
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/server/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/server/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/server/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/alertmanager/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/alertmanager/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/alertmanager/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/server/service/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/alertmanager/service/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/metrics",
+      "path": "/chart/values/server/datasource/url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/server/replicas",
+      "path": "/chart/values/server/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/server/containers/main",
+      "path": "/chart/values/server/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/alertmanager/replicas",
+      "path": "/chart/values/alertmanager/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/alertmanager/containers/main",
+      "path": "/chart/values/alertmanager/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/assets/alert_rules",
+      "path": "/chart/values/server/config/alerts"
+    },
+    {
+      "op": "copy",
+      "from": "/context/assets/alert_rules",
+      "path": "/files/alerts.json"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/metrics",
+      "path": "/chart/values/server/remoteWrite/url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/metrics",
+      "path": "/chart/values/server/remoteRead/url"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/smtp-notifications/dns_socket",
+      "path": "/chart/values/alertmanager/config/global/smtp_smarthost"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/smtp-notifications/fqdn",
+      "path": "/chart/values/alertmanager/config/global/smtp_tls_config/server_name"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/monitoring",
+      "path": "/chart/values/alertmanager/config/global/smtp_auth_username"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/monitoring",
+      "path": "/chart/values/alertmanager/config/global/smtp_from"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes/postmaster",
+      "path": "/chart/values/alertmanager/config/receivers/0/email_configs/0/to"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/alerts",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    },
+    {
+      "resource": "deployment/alertmanager",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "server": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 128
+          }
+        }
+      },
+      "replicas": 1
+    },
+    "alertmanager": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 128
+          }
+        }
+      },
+      "replicas": 1
+    }
+  },
+  "assets": {
+    "alert_rules": "monitoring_alerts"
+  },
+  "json_fields": [
+    "/files/alerts.json"
+  ],
+  "secrets": {
+    "alerts-smtp": {
+      "provider": "vault"
+    },
+    "alerts-ca": {
+      "provider": "ca"
+    }
+  },
+  "mailboxes": [
+    "monitoring",
+    "postmaster"
+  ]
+}

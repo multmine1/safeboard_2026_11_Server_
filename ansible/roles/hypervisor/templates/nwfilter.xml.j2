@@ -1,0 +1,8 @@
+<filter name="{{ controller.nwfilter.name | e }}" chain="root">
+{% if hypervisor_filter_uuid %}
+  <uuid>{{ hypervisor_filter_uuid | e }}</uuid>
+{% endif %}
+{% for filter in controller.nwfilter.references %}
+  <filterref filter="{{ filter | e }}"/>
+{% endfor %}
+</filter>

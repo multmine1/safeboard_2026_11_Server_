@@ -1,0 +1,43 @@
+- name: Prepare the exact project reset without applying it
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/reset.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  vars:
+    generated: "{{ playbook_dir }}/../../configs/generated"
+    ansible_become_exe: "{{ controller.become_exe }}"
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Inspect the canonical controller and current state
+      ansible.builtin.import_tasks: stages/reset-controller.yml
+
+    - name: Create the private reset plan directory
+      ansible.builtin.file:
+        path: "{{ reset.paths.directory }}"
+        state: directory
+        mode: "{{ reset.directory_mode }}"
+
+    - name: Save the native destroy plan for the current nonempty state
+      ansible.builtin.command:
+        argv: [tofu, plan, -destroy, -out, "{{ reset.paths.plan }}"]
+        chdir: "{{ reset.paths.tofu }}"
+      when: reset_state_addresses | length > 0
+      changed_when: true
+      no_log: true
+
+    - name: Inspect the saved plan and native host boundaries
+      ansible.builtin.import_tasks: stages/reset-inspect.yml
+
+    - name: Save only the validated reset preview
+      ansible.builtin.copy:
+        content: "{{ reset_preview | to_nice_json }}\n"
+        dest: "{{ reset.paths.preview }}"
+        mode: "{{ reset.file_mode }}"
+
+    - name: Show the reviewed scope of the future reset
+      ansible.builtin.debug:
+        var: reset_preview

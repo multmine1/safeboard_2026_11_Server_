@@ -1,0 +1,12 @@
+- name: Capture a prepared remote producer
+  ansible.builtin.include_tasks: capture.yml
+  when: backup_set.value.capture is defined
+
+- name: Capture a prepared local set without logging private source details
+  ansible.builtin.command:
+    argv: "{{ backup_set.value.argv }}"
+    chdir: "{{ backup_set.value.working_directory }}"
+    stdin: "{{ vault_store.backup.repository_password }}"
+  when: backup_set.value.capture is not defined
+  changed_when: true
+  no_log: true

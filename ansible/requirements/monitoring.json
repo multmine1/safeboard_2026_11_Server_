@@ -1,0 +1,11 @@
+{
+  "telegraf": {
+    "url": "https://dl.influxdata.com/telegraf/releases/telegraf-1.40.3_linux_amd64.tar.gz",
+    "checksum": "sha256:cbb95c43303db6e75e129a4eb8888ab1468009e61f6615e64a1cb82f50b0f4ce",
+    "archive_name": "telegraf-1.40.3_linux_amd64.tar.gz",
+    "archive_binary": "telegraf-1.40.3/usr/bin/telegraf",
+    "unarchive_options": [
+      "--strip-components=3"
+    ]
+  }
+}

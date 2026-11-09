@@ -1,0 +1,1007 @@
+{
+  "name": "stalwart",
+  "vm": "41155bf6-5bac-5c26-b462-89f88834842c",
+  "enabled": true,
+  "component": "stalwart",
+  "depends_on": [
+    "stalwart-db"
+  ],
+  "required_secrets": [
+    "stalwart-postgres",
+    "postgres-public-ca"
+  ],
+  "secrets": {
+    "stalwart-accounts": {
+      "provider": "vault"
+    },
+    "stalwart-tls": {
+      "provider": "certificate",
+      "services": [
+        "mail",
+        "submission",
+        "imaps",
+        "mail-admin",
+        "smtp-notifications"
+      ]
+    }
+  },
+  "mailboxes": [
+    "postmaster",
+    "forgejo",
+    "nextcloud",
+    "monitoring",
+    "system",
+    "admin"
+  ],
+  "files": {
+    "credentials.json": {
+      "password_length": 40,
+      "bootstrap_username": "bootstrap",
+      "database_username": "stalwart",
+      "accounts": {
+        "@type": "upsert",
+        "object": "Account",
+        "matchOn": [
+          "name",
+          "domainId"
+        ],
+        "value": {
+          "postmaster": {
+            "@type": "User",
+            "name": "postmaster",
+            "domainId": "#mail-domain",
+            "credentials": {
+              "0": {
+                "@type": "Password"
+              }
+            },
+            "quotas": {
+              "maxDiskQuota": 21474836480
+            },
+            "roles": {
+              "@type": "User"
+            }
+          },
+          "forgejo": {
+            "@type": "User",
+            "name": "forgejo",
+            "domainId": "#mail-domain",
+            "credentials": {
+              "0": {
+                "@type": "Password"
+              }
+            },
+            "quotas": {
+              "maxDiskQuota": 1048576
+            },
+            "roles": {
+              "@type": "Custom",
+              "roleIds": {}
+            },
+            "permissions": {
+              "@type": "Replace",
+              "enabledPermissions": {
+                "authenticate": true,
+                "emailSend": true
+              }
+            }
+          },
+          "nextcloud": {
+            "@type": "User",
+            "name": "nextcloud",
+            "domainId": "#mail-domain",
+            "credentials": {
+              "0": {
+                "@type": "Password"
+              }
+            },
+            "quotas": {
+              "maxDiskQuota": 1048576
+            },
+            "roles": {
+              "@type": "Custom",
+              "roleIds": {}
+            },
+            "permissions": {
+              "@type": "Replace",
+              "enabledPermissions": {
+                "authenticate": true,
+                "emailSend": true
+              }
+            }
+          },
+          "monitoring": {
+            "@type": "User",
+            "name": "monitoring",
+            "domainId": "#mail-domain",
+            "credentials": {
+              "0": {
+                "@type": "Password"
+              }
+            },
+            "quotas": {
+              "maxDiskQuota": 1048576
+            },
+            "roles": {
+              "@type": "Custom",
+              "roleIds": {}
+            },
+            "permissions": {
+              "@type": "Replace",
+              "enabledPermissions": {
+                "authenticate": true,
+                "emailSend": true
+              }
+            }
+          },
+          "system": {
+            "@type": "User",
+            "name": "system",
+            "domainId": "#mail-domain",
+            "credentials": {
+              "0": {
+                "@type": "Password"
+              }
+            },
+            "quotas": {
+              "maxDiskQuota": 1048576
+            },
+            "roles": {
+              "@type": "Custom",
+              "roleIds": {}
+            },
+            "permissions": {
+              "@type": "Replace",
+              "enabledPermissions": {
+                "authenticate": true,
+                "emailSend": true
+              }
+            }
+          },
+          "admin": {
+            "@type": "User",
+            "name": "admin",
+            "domainId": "#mail-domain",
+            "credentials": {
+              "0": {
+                "@type": "Password"
+              }
+            },
+            "roles": {
+              "@type": "Admin"
+            },
+            "quotas": {
+              "maxDiskQuota": 1048576
+            }
+          }
+        }
+      },
+      "clients": [
+        {
+          "application": "forgejo",
+          "account": "forgejo",
+          "secret": "forgejo-smtp"
+        },
+        {
+          "application": "nextcloud",
+          "account": "nextcloud",
+          "secret": "nextcloud-smtp"
+        },
+        {
+          "application": "alerts",
+          "account": "monitoring",
+          "secret": "alerts-smtp"
+        }
+      ]
+    }
+  },
+  "storage": {
+    "nfs_exports": [
+      {
+        "name": "messages",
+        "service": "mail-backup-data",
+        "mount": "mail",
+        "directory": "stalwart",
+        "clients": [],
+        "owner": "2000",
+        "group": "2000",
+        "mode": "0700",
+        "hypervisor_access": {
+          "service": "mail-backup-data",
+          "options": "ro,sync,all_squash,anonuid=2000,anongid=2000,no_subtree_check"
+        }
+      }
+    ]
+  },
+  "guest": {
+    "directories": [
+      {
+        "owner": "2000",
+        "group": "2000",
+        "mode": "0700"
+      },
+      {
+        "path": "/etc/nfs.conf.d",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755"
+      },
+      {
+        "path": "/etc/exports.d",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755"
+      }
+    ],
+    "nfs": {
+      "exports_path": "/etc/exports.d/skeleton.exports",
+      "file_mode": "0644"
+    },
+    "files": [
+      {
+        "path": "/etc/nfs.conf.d/skeleton.conf",
+        "mode": "0644",
+        "content": "[nfsd]\nvers3=n\nvers4=y\nudp=n\ntcp=y\n"
+      }
+    ],
+    "services": [
+      "nfs-server"
+    ]
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "stalwart-messages"
+      },
+      "spec": {
+        "storageClassName": "",
+        "volumeName": "stalwart-messages",
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "32Gi"
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "stalwart-settings"
+      },
+      "data": {
+        "config.json": {
+          "@type": "PostgreSql",
+          "database": "stalwart",
+          "authUsername": "stalwart",
+          "authSecret": {
+            "@type": "File",
+            "filePath": "/postgres/password"
+          },
+          "useTls": true,
+          "allowInvalidCerts": false,
+          "poolMaxConnections": 4
+        },
+        "plan.ndjson": [
+          {
+            "@type": "upsert",
+            "object": "Domain",
+            "matchOn": [
+              "name"
+            ],
+            "value": {
+              "mail-domain": {
+                "enable": true,
+                "allowRelaying": false,
+                "certificateManagement": {
+                  "@type": "Manual"
+                },
+                "dkimManagement": {
+                  "@type": "Automatic"
+                },
+                "dnsManagement": {
+                  "@type": "Manual"
+                },
+                "subAddressing": {
+                  "@type": "Enabled"
+                }
+              }
+            }
+          },
+          {
+            "@type": "upsert",
+            "object": "Certificate",
+            "matchOn": [
+              "certificate"
+            ],
+            "value": {
+              "mail-certificate": {
+                "certificate": {
+                  "@type": "File",
+                  "filePath": "/tls/tls.crt"
+                },
+                "privateKey": {
+                  "@type": "File",
+                  "filePath": "/tls/tls.key"
+                }
+              }
+            }
+          },
+          {
+            "@type": "update",
+            "object": "SystemSettings",
+            "value": {
+              "defaultDomainId": "#mail-domain",
+              "defaultCertificateId": "#mail-certificate",
+              "includeSecrets": false,
+              "maxConnections": 512,
+              "maxBufferedMemory": 134217728,
+              "mailExchangers": {
+                "0": {
+                  "priority": 10
+                }
+              },
+              "services": {
+                "imap": {
+                  "cleartext": false
+                },
+                "smtp": {
+                  "cleartext": false
+                }
+              }
+            }
+          },
+          {
+            "@type": "update",
+            "object": "BlobStore",
+            "value": {
+              "@type": "FileSystem",
+              "path": "/var/lib/stalwart/blobs",
+              "depth": 2
+            }
+          },
+          {
+            "@type": "upsert",
+            "object": "NetworkListener",
+            "matchOn": [
+              "name"
+            ],
+            "value": {
+              "smtp": {
+                "name": "smtp",
+                "bind": {
+                  "0.0.0.0:25": true
+                },
+                "protocol": "smtp",
+                "useTls": true,
+                "implicitTls": false
+              },
+              "submissions": {
+                "name": "submissions",
+                "bind": {
+                  "0.0.0.0:465": true
+                },
+                "protocol": "smtp",
+                "useTls": true,
+                "implicitTls": true
+              },
+              "imaps": {
+                "name": "imaps",
+                "bind": {
+                  "0.0.0.0:993": true
+                },
+                "protocol": "imap",
+                "useTls": true,
+                "implicitTls": true
+              },
+              "https": {
+                "name": "https",
+                "bind": {
+                  "0.0.0.0:443": true
+                },
+                "protocol": "http",
+                "useTls": true,
+                "implicitTls": true
+              },
+              "submission": {
+                "name": "submission",
+                "bind": {
+                  "0.0.0.0:587": true
+                },
+                "protocol": "smtp",
+                "useTls": true,
+                "implicitTls": false
+              }
+            }
+          },
+          {
+            "@type": "update",
+            "object": "DnsResolver",
+            "value": {
+              "@type": "System"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "stalwart"
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "externalTrafficPolicy": "Local",
+        "selector": {
+          "app": "stalwart"
+        },
+        "externalIPs": [],
+        "ports": [
+          {
+            "name": "smtp",
+            "port": 25,
+            "targetPort": 25
+          },
+          {
+            "name": "submissions",
+            "port": 465,
+            "targetPort": 465
+          },
+          {
+            "name": "imaps",
+            "port": 993,
+            "targetPort": 993
+          },
+          {
+            "name": "https",
+            "port": 443,
+            "targetPort": 443
+          },
+          {
+            "name": "submission",
+            "port": 587,
+            "targetPort": 587
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "stalwart"
+      },
+      "spec": {
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "stalwart"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "stalwart"
+            },
+            "annotations": {}
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "nodeSelector": {},
+            "securityContext": {
+              "runAsUser": 2000,
+              "runAsGroup": 2000,
+              "fsGroup": 2000,
+              "runAsNonRoot": true,
+              "fsGroupChangePolicy": "OnRootMismatch"
+            },
+            "initContainers": [
+              {
+                "name": "trust",
+                "command": [
+                  "/bin/sh",
+                  "-ec",
+                  "cp /postgres-ca/ca.crt /usr/local/share/ca-certificates/postgres.crt\nupdate-ca-certificates\ncp /etc/ssl/certs/ca-certificates.crt /runtime/ca-certificates.crt"
+                ],
+                "securityContext": {
+                  "runAsUser": 0,
+                  "runAsNonRoot": false,
+                  "allowPrivilegeEscalation": false,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "name": "postgres-ca",
+                    "mountPath": "/postgres-ca",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "runtime",
+                    "mountPath": "/runtime"
+                  }
+                ]
+              },
+              {
+                "name": "configure",
+                "command": [
+                  "/bin/sh",
+                  "-c",
+                  "set -eu\n/usr/local/bin/stalwart --config /settings/config.json &\nserver_pid=$!\ntrap 'kill \"$server_pid\"; wait \"$server_pid\" || true' EXIT\nuntil curl --silent --output /dev/null \"$STALWART_URL/\"; do\n  kill -0 \"$server_pid\"\n  sleep 1\ndone\ncat /settings/plan.ndjson /credentials/accounts.ndjson | /tools/stalwart-cli apply --stdin\n"
+                ],
+                "env": [
+                  {
+                    "name": "SSL_CERT_FILE",
+                    "value": "/runtime/ca-certificates.crt"
+                  },
+                  {
+                    "name": "XDG_CACHE_HOME",
+                    "value": "/runtime/cache"
+                  },
+                  {
+                    "name": "STALWART_RECOVERY_MODE",
+                    "value": "1"
+                  },
+                  {
+                    "name": "STALWART_USER",
+                    "value": "bootstrap"
+                  },
+                  {
+                    "name": "STALWART_RECOVERY_ADMIN",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "stalwart-accounts",
+                        "key": "recovery-admin"
+                      }
+                    }
+                  },
+                  {
+                    "name": "STALWART_PASSWORD",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "stalwart-accounts",
+                        "key": "recovery-password"
+                      }
+                    }
+                  },
+                  {
+                    "name": "STALWART_URL",
+                    "value": "http://127.0.0.1:8080"
+                  }
+                ],
+                "volumeMounts": [
+                  {
+                    "name": "settings",
+                    "mountPath": "/settings",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "messages",
+                    "mountPath": "/var/lib/stalwart",
+                    "readOnly": false
+                  },
+                  {
+                    "name": "postgres",
+                    "mountPath": "/postgres",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tls",
+                    "mountPath": "/tls",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "runtime",
+                    "mountPath": "/runtime",
+                    "readOnly": false
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp",
+                    "readOnly": false
+                  },
+                  {
+                    "name": "credentials",
+                    "mountPath": "/credentials",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "cli",
+                    "mountPath": "/tools/stalwart-cli",
+                    "readOnly": true
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ],
+                    "add": [
+                      "NET_BIND_SERVICE"
+                    ]
+                  }
+                }
+              }
+            ],
+            "containers": [
+              {
+                "name": "mail",
+                "args": [
+                  "--config",
+                  "/settings/config.json"
+                ],
+                "env": [
+                  {
+                    "name": "SSL_CERT_FILE",
+                    "value": "/runtime/ca-certificates.crt"
+                  },
+                  {
+                    "name": "XDG_CACHE_HOME",
+                    "value": "/runtime/cache"
+                  }
+                ],
+                "volumeMounts": [
+                  {
+                    "name": "settings",
+                    "mountPath": "/settings",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "messages",
+                    "mountPath": "/var/lib/stalwart",
+                    "readOnly": false
+                  },
+                  {
+                    "name": "postgres",
+                    "mountPath": "/postgres",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tls",
+                    "mountPath": "/tls",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "runtime",
+                    "mountPath": "/runtime",
+                    "readOnly": false
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp",
+                    "readOnly": false
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ],
+                    "add": [
+                      "NET_BIND_SERVICE"
+                    ]
+                  }
+                },
+                "ports": [
+                  {
+                    "name": "smtp",
+                    "containerPort": 25
+                  },
+                  {
+                    "name": "submissions",
+                    "containerPort": 465
+                  },
+                  {
+                    "name": "imaps",
+                    "containerPort": 993
+                  },
+                  {
+                    "name": "https",
+                    "containerPort": 443
+                  },
+                  {
+                    "name": "submission",
+                    "containerPort": 587
+                  }
+                ],
+                "readinessProbe": {
+                  "tcpSocket": {
+                    "port": "imaps"
+                  },
+                  "periodSeconds": 10
+                },
+                "startupProbe": {
+                  "tcpSocket": {
+                    "port": "imaps"
+                  },
+                  "periodSeconds": 5,
+                  "failureThreshold": 60
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "settings",
+                "configMap": {
+                  "name": "stalwart-settings"
+                }
+              },
+              {
+                "name": "messages",
+                "persistentVolumeClaim": {
+                  "claimName": "stalwart-messages"
+                }
+              },
+              {
+                "name": "postgres",
+                "secret": {
+                  "secretName": "stalwart-postgres",
+                  "defaultMode": 288
+                }
+              },
+              {
+                "name": "postgres-ca",
+                "secret": {
+                  "secretName": "postgres-public-ca"
+                }
+              },
+              {
+                "name": "tls",
+                "secret": {
+                  "secretName": "stalwart-tls",
+                  "defaultMode": 288
+                }
+              },
+              {
+                "name": "credentials",
+                "secret": {
+                  "secretName": "stalwart-accounts",
+                  "defaultMode": 288
+                }
+              },
+              {
+                "name": "runtime",
+                "emptyDir": {}
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {}
+              },
+              {
+                "name": "cli",
+                "hostPath": {
+                  "path": "/usr/local/bin/stalwart-cli",
+                  "type": "File"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "stalwart-messages"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "32Gi"
+        },
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "stalwart-messages",
+          "namespace": ""
+        },
+        "local": {},
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "json_fields": [
+    "/resources/1/data/config.json",
+    "/files/credentials.json"
+  ],
+  "ndjson_fields": [
+    "/resources/1/data/plan.ndjson"
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/stalwart",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "main": {
+      "replicas": 1,
+      "containers": {
+        "mail": {
+          "requests": {
+            "cpu_millicores": 100,
+            "ram_mib": 256
+          },
+          "limits": {
+            "cpu_millicores": 1500,
+            "ram_mib": 2048
+          }
+        }
+      },
+      "init_containers": {
+        "configure": {
+          "requests": {
+            "cpu_millicores": 100,
+            "ram_mib": 128
+          },
+          "limits": {
+            "cpu_millicores": 1000,
+            "ram_mib": 1024
+          }
+        },
+        "trust": {
+          "requests": {
+            "cpu_millicores": 10,
+            "ram_mib": 32
+          },
+          "limits": {
+            "cpu_millicores": 100,
+            "ram_mib": 128
+          }
+        }
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/site_domain",
+      "path": "/resources/1/data/plan.ndjson/0/value/mail-domain/name"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/mail/fqdn",
+      "path": "/resources/1/data/plan.ndjson/2/value/defaultHostname"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/public-sql/fqdn",
+      "path": "/resources/1/data/config.json/host"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/public-sql/port",
+      "path": "/resources/1/data/config.json/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/files/credentials.json/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/mailboxes",
+      "path": "/files/credentials.json/addresses"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/binaries",
+      "path": "/guest/binaries"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs_exports/0/path",
+      "path": "/guest/directories/0/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs_exports/0/path",
+      "path": "/cluster_resources/0/spec/local/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/resources/2/spec/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/resources/3/spec/template/spec/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/resources/3/spec/template/metadata/annotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/resources/3/spec/template/metadata/labels/skeleton.vm"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/resources/3/spec/replicas"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/image",
+      "path": "/resources/3/spec/template/spec/containers/0/image"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/mail",
+      "path": "/resources/3/spec/template/spec/containers/0/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/image",
+      "path": "/resources/3/spec/template/spec/initContainers/0/image"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/init_containers/trust",
+      "path": "/resources/3/spec/template/spec/initContainers/0/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/image",
+      "path": "/resources/3/spec/template/spec/initContainers/1/image"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/init_containers/configure",
+      "path": "/resources/3/spec/template/spec/initContainers/1/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs_exports",
+      "path": "/guest/nfs_exports"
+    }
+  ]
+}

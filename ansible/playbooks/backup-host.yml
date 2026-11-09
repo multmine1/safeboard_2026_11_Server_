@@ -1,0 +1,24 @@
+- name: Configure native backup jobs after the cluster and applications are ready
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/host-requirements.json
+    - ../../configs/generated/ansible/backup.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+    ansible_pipelining: true
+    hypervisor_backup: "{{ backup.host }}"
+  tasks:
+    - name: Check the selected host platform before configuring native backup
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: platform
+      become: false
+
+    - name: Apply the hypervisor's prepared native backup configuration
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: backup

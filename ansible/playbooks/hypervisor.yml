@@ -1,0 +1,64 @@
+- name: Prepare the hypervisor
+  hosts: hypervisors
+  become: true
+  vars_files:
+    - ../../configs/generated/ansible/host-requirements.json
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+    - ../../configs/generated/ansible/sshd.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  pre_tasks:
+    - name: Check the selected host platform before changing access or packages
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: platform
+      become: false
+
+    - name: Derive only the public key from Vault
+      ansible.builtin.set_fact:
+        macos_public_key: "{{ vault_store.vmctl_private_key | ssh_public_key(vault_store.vmctl_key_passphrase) }}"
+      no_log: true
+
+    - name: Save the public identity for the Mac SSH config
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      block:
+        - name: Create the public identity directory
+          ansible.builtin.file:
+            path: "{{ macos_public_key_file | dirname }}"
+            state: directory
+            mode: '0700'
+
+        - name: Write only the public key
+          ansible.builtin.copy:
+            content: "{{ macos_public_key }}\n"
+            dest: "{{ macos_public_key_file }}"
+            mode: '0644'
+
+        - name: Configure the common alias on the Mac controller
+          ansible.builtin.blockinfile:
+            path: "{{ lookup('env', 'HOME') }}/.ssh/config"
+            insertbefore: BOF
+            marker: '# {mark} hypervisor'
+            block: "{{ lookup('template', playbook_dir + '/../roles/hypervisor/templates/ssh.conf.j2') }}"
+          vars:
+            identity_file: "{{ macos_public_key_file }}"
+            identity_agent: SSH_AUTH_SOCK
+            ssh_connections: "{{ hypervisor_connections }}"
+            ssh_use_fallback: true
+          when: lookup('pipe', 'uname') == 'Darwin'
+  tasks:
+    - name: Prepare the host and release its connection
+      block:
+        - name: Apply the declared hypervisor configuration
+          ansible.builtin.import_role:
+            name: hypervisor
+        - name: Apply pending service changes
+          ansible.builtin.meta: flush_handlers
+      always:
+        - name: Release the hypervisor connection
+          ansible.builtin.meta: reset_connection

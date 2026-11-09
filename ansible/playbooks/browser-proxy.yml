@@ -1,0 +1,14 @@
+- name: Configure selective browser access on the Mac controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    browser_proxy_access: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../configs/generated/ansible/local-access.json') | from_json }}"
+    browser_proxy_settings: "{{ browser_proxy_access.browser_proxy }}"
+    browser_proxy_state: present
+    browser_proxy_root: "{{ playbook_dir | dirname | dirname }}"
+    browser_proxy_directory: "{{ browser_proxy_root }}/configs/generated/ansible/browser-proxy"
+    browser_proxy_agent: "{{ lookup('ansible.builtin.env', 'HOME') }}/Library/LaunchAgents/{{ browser_proxy_settings.label }}.plist"
+  roles:
+    - browser_proxy

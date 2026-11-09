@@ -1,0 +1,29 @@
+- name: Read the current native variable
+  ansible.builtin.uri:
+    url: "{{ ci_repository_api }}/actions/variables/{{ ci_repository_variable.key }}"
+    headers: "{{ ci_repository_headers }}"
+    ca_path: "{{ ci_repository_ca.path }}"
+    status_code: [200, 404]
+  register: ci_repository_existing_variable
+  no_log: true
+
+- name: Create or update only a changed repository variable
+  ansible.builtin.uri:
+    url: "{{ ci_repository_api }}/actions/variables/{{ ci_repository_variable.key }}"
+    method: "{{ 'POST' if ci_repository_existing_variable.status == 404 else 'PUT' }}"
+    headers: "{{ ci_repository_headers }}"
+    ca_path: "{{ ci_repository_ca.path }}"
+    body_format: json
+    body: >-
+      {{ {'value': ci_repository_variable.value} | combine(
+           {'name': ci_repository_variable.key} if ci_repository_existing_variable.status == 200 else {}) }}
+    status_code: [201, 204]
+  when: ci_repository_existing_variable.status == 404 or ci_repository_existing_variable.json.data != ci_repository_variable.value
+  changed_when: true
+  register: ci_repository_variable_update
+  no_log: true
+
+- name: Record a changed delivery input for native workflow dispatch
+  ansible.builtin.set_fact:
+    ci_repository_variables_changed: true
+  when: ci_repository_variable_update is changed

@@ -1,0 +1,121 @@
+- name: Select a unique disposable account and pool for this policy
+  ansible.builtin.set_fact:
+    reset_test_name: "sk-reset-{{ reset_test_suffix }}-{{ reset_test_policy }}"
+    reset_test_root: "{{ reset_test_host.path }}/{{ reset_test_policy }}"
+    reset_test_user_created: {changed: false}
+    reset_test_pool_created: {changed: false}
+
+- name: Prepare only fixture paths for the production host cleanup
+  ansible.builtin.set_fact:
+    reset:
+      controller_user: "{{ reset_test_source.controller_user }}"
+      controller_known_hosts: "{{ reset_test_local.path }}/known_hosts"
+      controller_access:
+        ssh_config: "{{ reset_test_root }}/ssh_config"
+        known_hosts: "{{ reset_test_root }}/known_hosts"
+        marker: '# {mark} reset-fixture'
+      account: {name: "{{ reset_test_name }}", home: "{{ reset_test_root }}/home"}
+      libvirt_uri: "{{ reset_test_source.libvirt_uri }}"
+      session_retries: "{{ reset_test_source.session_retries }}"
+      session_delay_seconds: "{{ reset_test_source.session_delay_seconds }}"
+      known_host_aliases: "{{ reset_test_guests }}"
+      stop_services: []
+      remove_files: ["{{ reset_test_root }}/overlay"]
+      remove_links: ["{{ reset_test_root }}/VMs/current"]
+      volume_directories: ["{{ reset_test_root }}/volumes"]
+      platform_pools: [{name: "{{ reset_test_name }}", path: "{{ reset_test_root }}/volumes"}]
+      remove_directories: "{{ [reset_test_root + '/archive/backups/repository'] if reset_test_policy == 'remove' else [] }}"
+      backup_repository_access:
+        parents: ["{{ reset_test_root }}/archive", "{{ reset_test_root }}/archive/backups"]
+        repository: "{{ reset_test_root }}/archive/backups/repository"
+        user: "{{ reset_test_name }}"
+
+- name: Exercise only the unique disposable host resources
+  block:
+    - name: Require the unique fixture pool to be absent before defining it
+      ansible.builtin.assert:
+        that: reset_test_name not in reset_test_original_pools.stdout_lines
+
+    - name: Prepare and inspect the fixture on the real host
+      ansible.builtin.import_tasks: reset-host-prepare.yml
+
+    - name: Inspect real account identities before cleanup
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-identity.yml
+
+    - name: Retain the actual UID for the orphan ACL check
+      ansible.builtin.set_fact:
+        reset_test_uid: "{{ reset_removable_account.ansible_facts.getent_passwd[reset.account.name][1] }}"
+
+    - name: Validate the prepared backup paths from native observations
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-backup-inspect.yml
+
+    - name: Stop only declared fixture services
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-services.yml
+
+    - name: Apply the production host cleanup to the fixture only
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-host.yml
+
+    - name: Remove only the declared guest identities from the fixture controller trust
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-controller-access.yml
+
+    - name: Verify data ownership trust and absence of orphan ACL entries
+      ansible.builtin.import_tasks: reset-host-verify.yml
+
+    - name: Refresh native account and path observations for the repeat
+      ansible.builtin.import_tasks: reset-host-observe.yml
+
+    - name: Reinspect account identities after the disposable account was removed
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-identity.yml
+
+    - name: Revalidate backup observations for the repeat
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-backup-inspect.yml
+
+    - name: Begin the unchanged repeat of the production cleanup
+      ansible.builtin.debug:
+        msg: "Repeat begins: {{ reset_test_policy }}"
+
+    - name: Repeat only the prepared fixture service cleanup
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-services.yml
+
+    - name: Repeat the exact same host cleanup after its first success
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-host.yml
+
+    - name: Repeat the exact same controller trust cleanup
+      ansible.builtin.import_tasks: ../playbooks/stages/reset-controller-access.yml
+
+    - name: End the unchanged repeat of the production cleanup
+      ansible.builtin.debug:
+        msg: "Repeat ends: {{ reset_test_policy }}"
+
+  always:
+    - name: Release only a pool created by this fixture if a check failed
+      community.libvirt.virt_pool:
+        uri: "{{ reset.libvirt_uri }}"
+        name: "{{ reset_test_name }}"
+        state: absent
+      delegate_to: "{{ controller.admin_alias }}"
+      become: true
+      vars:
+        ansible_python_interpreter: "{{ controller.python }}"
+      when: reset_test_pool_created.changed
+
+    - name: Remove only an account created by this fixture if a check failed
+      ansible.builtin.user:
+        name: "{{ reset_test_name }}"
+        state: absent
+        remove: true
+      delegate_to: "{{ controller.admin_alias }}"
+      become: true
+      vars:
+        ansible_python_interpreter: "{{ controller.python }}"
+      when: reset_test_user_created.changed
+
+    - name: Remove only the private group created with this fixture account
+      ansible.builtin.group:
+        name: "{{ reset_test_name }}"
+        state: absent
+      delegate_to: "{{ controller.admin_alias }}"
+      become: true
+      vars:
+        ansible_python_interpreter: "{{ controller.python }}"
+      when: reset_test_user_created.changed

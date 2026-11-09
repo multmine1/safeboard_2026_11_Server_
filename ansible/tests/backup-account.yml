@@ -1,0 +1,219 @@
+- name: Exercise only disposable service-account creation and guarded cleanup
+  hosts: hypervisors
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../../configs/generated/ansible/backup.json
+    - ../../configs/generated/ansible/reset.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Create this proof's private directory without touching project data
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: skeleton-account-proof-
+      register: account_fixture_directory
+
+    - name: Bind only this proof's random identity and cache path
+      ansible.builtin.set_fact:
+        account_fixture_name: "sk-bk-{{ account_fixture_directory.path | basename | split('-') | last }}"
+        account_fixture_home: "{{ account_fixture_directory.path }}/cache"
+        account_fixture_shell: "{{ backup.repository_access.account.shell }}"
+        account_fixture_transport: "{{ backup.repository_access.transport_user }}"
+        account_fixture_source_reset: "{{ reset }}"
+        account_fixture_source_access: "{{ backup.repository_access }}"
+        controller: "{{ backup.hypervisor }}"
+
+    - name: Preserve only the harmless fixture payload for the permission proof
+      ansible.builtin.copy:
+        content: "disposable backup permission proof\n"
+        dest: "{{ account_fixture_directory.path }}/payload"
+        mode: '0644'
+
+    - name: Require the disposable namespace to be absent before claiming cleanup rights
+      ansible.builtin.getent:
+        database: "{{ item }}"
+        key: "{{ account_fixture_name }}"
+        fail_key: false
+      loop: [passwd, group]
+      register: account_fixture_before
+
+    - name: Reject any preexisting identity with this random name
+      ansible.builtin.assert:
+        that: item.ansible_facts['getent_' ~ item.item][account_fixture_name] is none
+      loop: "{{ account_fixture_before.results }}"
+
+    - name: Prepare only the account role's disposable input
+      ansible.builtin.set_fact:
+        account_fixture_backup:
+          mount: "{{ account_fixture_directory.path }}"
+          repository: "{{ account_fixture_directory.path }}/repository"
+          repository_parents: ["{{ account_fixture_directory.path }}"]
+          repository_access:
+            owner: "{{ account_fixture_name }}"
+            group: "{{ account_fixture_name }}"
+            users: ["{{ account_fixture_name }}", "{{ account_fixture_transport }}"]
+            transport_user: "{{ account_fixture_transport }}"
+            file_mode: "{{ account_fixture_source_access.file_mode }}"
+            directory_mode: "{{ account_fixture_source_access.directory_mode }}"
+            permission_argv:
+              - [find, "{{ account_fixture_directory.path }}/repository", -type, f, -exec,
+                 chmod, --changes, "{{ account_fixture_source_access.file_mode }}", '{}', '+']
+              - [find, "{{ account_fixture_directory.path }}/repository", -type, d, -exec,
+                 chmod, --changes, "{{ account_fixture_source_access.directory_mode }}", '{}', '+']
+            account:
+              name: "{{ account_fixture_name }}"
+              home: "{{ account_fixture_home }}"
+              shell: "{{ account_fixture_shell }}"
+        account_fixture_identity:
+          name: "{{ account_fixture_name }}"
+          group: "{{ account_fixture_name }}"
+          home: "{{ account_fixture_home }}"
+          shell: "{{ account_fixture_shell }}"
+
+    - name: Bind the disposable public role input for this process only
+      ansible.builtin.set_fact:
+        backup: "{{ account_fixture_backup }}"
+
+    - name: Exercise the production identity and cleanup tasks on only this fixture
+      block:
+        - name: Create only the disposable service identity through the actual role
+          ansible.builtin.include_role:
+            name: hypervisor
+            tasks_from: backup-repository
+
+        - name: Reconcile the same service identity again
+          ansible.builtin.include_role:
+            name: hypervisor
+            tasks_from: backup-repository
+
+        - name: Create new writer directories without relying on inherited setgid
+          ansible.builtin.command:
+            argv: [runuser, -u, "{{ item }}", --, install, -d, -m, '0770',
+                   "{{ backup.repository }}/{{ item }}", "{{ backup.repository }}/{{ item }}/nested"]
+          loop: "{{ backup.repository_access.users }}"
+          changed_when: true
+
+        - name: Save new readonly files as each native repository writer
+          ansible.builtin.command:
+            argv: [runuser, -u, "{{ item }}", --, install, -m, "{{ backup.repository_access.file_mode }}",
+                   "{{ account_fixture_directory.path }}/payload", "{{ backup.repository }}/{{ item }}/nested/payload"]
+          loop: "{{ backup.repository_access.users }}"
+          changed_when: true
+
+        - name: Read the other writer's new file without privileged access
+          ansible.builtin.command:
+            argv: [runuser, -u, "{{ item.reader }}", --, cat,
+                   "{{ backup.repository }}/{{ item.writer }}/nested/payload"]
+          loop:
+            - {writer: "{{ account_fixture_name }}", reader: "{{ account_fixture_transport }}"}
+            - {writer: "{{ account_fixture_transport }}", reader: "{{ account_fixture_name }}"}
+          register: account_fixture_reads
+          changed_when: false
+
+        - name: Require both identities to see exactly the saved fixture bytes
+          ansible.builtin.assert:
+            that: item.stdout == 'disposable backup permission proof'
+          loop: "{{ account_fixture_reads.results }}"
+
+        - name: Require guarded deletion to reject an unrelated home
+          block:
+            - name: Try only the mismatched fixture identity
+              ansible.builtin.include_tasks: ../playbooks/stages/reset-service-account.yml
+              vars:
+                reset_service_account: "{{ account_fixture_identity | combine({'home': account_fixture_home ~ '-foreign'}) }}"
+          rescue:
+            - name: Remember the expected provenance rejection
+              ansible.builtin.set_fact:
+                account_fixture_rejected: true
+
+        - name: Require the mismatched cleanup to have failed before deletion
+          ansible.builtin.assert:
+            that: account_fixture_rejected | default(false)
+
+        - name: Read the preserved disposable identity after the rejected cleanup
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ account_fixture_name }}"
+          register: account_fixture_preserved
+
+        - name: Bind only the fixture repository for the production ACL cleanup
+          ansible.builtin.set_fact:
+            account_fixture_uid: "{{ account_fixture_preserved.ansible_facts.getent_passwd[account_fixture_name][1] }}"
+            reset: >-
+              {{ account_fixture_source_reset | combine({'remove_directories': [],
+                 'backup_repository_access': {'parents': backup.repository_parents,
+                   'repository': backup.repository, 'user': account_fixture_transport,
+                   'service_user': account_fixture_name}}) }}
+
+        - name: Read the declared native identities without changing them
+          ansible.builtin.include_tasks: ../playbooks/stages/reset-identity.yml
+
+        - name: Inspect only this fixture's repository and parent
+          ansible.builtin.stat:
+            path: "{{ item }}"
+            follow: false
+          loop: "{{ backup.repository_parents + [backup.repository] }}"
+          register: reset_host_paths
+
+        - name: Validate the production permission target boundary on the fixture
+          ansible.builtin.include_tasks: ../playbooks/stages/reset-backup-inspect.yml
+
+        - name: Revoke only fixture ACLs and transfer its preserved data
+          ansible.builtin.include_tasks: ../playbooks/stages/reset-backup-access.yml
+
+        - name: Read the fixture ACLs before the service UID is released
+          ansible.builtin.command:
+            argv: [getfacl, --numeric, --recursive, "{{ account_fixture_directory.path }}"]
+          register: account_fixture_acl
+          changed_when: false
+
+        - name: Require no reusable UID ACL to survive the prepared repository cleanup
+          ansible.builtin.assert:
+            that:
+              - "('user:' ~ account_fixture_uid ~ ':') not in account_fixture_acl.stdout"
+              - >-
+                ('user:' ~ reset_removable_account.ansible_facts.getent_passwd[account_fixture_transport][1] ~ ':')
+                not in account_fixture_acl.stdout
+
+        - name: Remove only the exact prepared fixture identity and private group
+          ansible.builtin.include_tasks: ../playbooks/stages/reset-service-account.yml
+          vars:
+            reset_service_account: "{{ account_fixture_identity }}"
+
+        - name: Repeat the same cleanup without changing anything
+          ansible.builtin.include_tasks: ../playbooks/stages/reset-service-account.yml
+          vars:
+            reset_service_account: "{{ account_fixture_identity }}"
+
+        - name: Require both disposable identity records to be absent
+          ansible.builtin.getent:
+            database: "{{ item }}"
+            key: "{{ account_fixture_name }}"
+            fail_key: false
+          loop: [passwd, group]
+          register: account_fixture_after
+
+        - name: Check the native final identity observations
+          ansible.builtin.assert:
+            that: item.ansible_facts['getent_' ~ item.item][account_fixture_name] is none
+          loop: "{{ account_fixture_after.results }}"
+
+      always:
+        - name: Release only the already claimed disposable user
+          ansible.builtin.user:
+            name: "{{ account_fixture_name }}"
+            state: absent
+            remove: false
+
+        - name: Release only its private group
+          ansible.builtin.group:
+            name: "{{ account_fixture_name }}"
+            state: absent
+
+        - name: Remove only this proof's private directory
+          ansible.builtin.file:
+            path: "{{ account_fixture_directory.path }}"
+            state: absent

@@ -1,0 +1,168 @@
+{
+  "name": "portfolio-edge",
+  "vm": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+  "enabled": true,
+  "depends_on": [
+    "nginx",
+    "portfolio"
+  ],
+  "secrets": {
+    "portfolio-edge-tls": {
+      "provider": "certificate",
+      "services": [
+        "portfolio"
+      ]
+    },
+    "portfolio-edge-ca": {
+      "provider": "ca"
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "portfolio-backend"
+      },
+      "spec": {
+        "ports": [
+          {
+            "name": "https",
+            "port": 3000,
+            "targetPort": 3000
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "discovery.k8s.io/v1",
+      "kind": "EndpointSlice",
+      "metadata": {
+        "name": "portfolio-backend",
+        "labels": {
+          "kubernetes.io/service-name": "portfolio-backend",
+          "endpointslice.kubernetes.io/managed-by": "skeleton"
+        }
+      },
+      "addressType": "IPv4",
+      "ports": [
+        {
+          "name": "https",
+          "protocol": "TCP"
+        }
+      ],
+      "endpoints": [
+        {
+          "addresses": [],
+          "conditions": {
+            "ready": true
+          }
+        }
+      ]
+    },
+    {
+      "apiVersion": "k8s.nginx.org/v1",
+      "kind": "Policy",
+      "metadata": {
+        "name": "portfolio-backend-tls"
+      },
+      "spec": {
+        "egressMTLS": {
+          "trustedCertSecret": "portfolio-edge-ca",
+          "verifyServer": true,
+          "verifyDepth": 2,
+          "serverName": true,
+          "protocols": "TLSv1.2 TLSv1.3"
+        }
+      }
+    },
+    {
+      "apiVersion": "k8s.nginx.org/v1",
+      "kind": "VirtualServer",
+      "metadata": {
+        "name": "portfolio"
+      },
+      "spec": {
+        "ingressClassName": "nginx",
+        "tls": {
+          "secret": "portfolio-edge-tls",
+          "redirect": {
+            "enable": true
+          }
+        },
+        "policies": [
+          {
+            "name": "portfolio-backend-tls"
+          }
+        ],
+        "http-snippets": "map \"$request_method:$uri\" $portfolio_read_allowed {\n    default 0;\n    ~^(GET|HEAD|OPTIONS): 1;\n    ~^POST:/[^/]+/[^/]+/git-upload-pack$ 1;\n}\n",
+        "server-snippets": "if ($portfolio_read_allowed = 0) { return 403; }\n",
+        "upstreams": [
+          {
+            "name": "portfolio",
+            "service": "portfolio-backend",
+            "port": 3000,
+            "tls": {
+              "enable": true
+            }
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "action": {
+              "pass": "portfolio"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/connections/portfolio-backend/address",
+      "path": "/resources/1/endpoints/0/addresses/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/portfolio-backend/port",
+      "path": "/resources/0/spec/ports/0/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/portfolio-backend/port",
+      "path": "/resources/0/spec/ports/0/targetPort"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/portfolio-backend/port",
+      "path": "/resources/1/ports/0/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/portfolio-backend/port",
+      "path": "/resources/3/spec/upstreams/0/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/portfolio-backend/fqdn",
+      "path": "/resources/2/spec/egressMTLS/sslName"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/portfolio/fqdn",
+      "path": "/resources/3/spec/host"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "policy/portfolio-backend-tls",
+      "wait_for": "jsonpath={.status.state}=Valid"
+    },
+    {
+      "resource": "virtualserver/portfolio",
+      "wait_for": "jsonpath={.status.state}=Valid"
+    }
+  ]
+}

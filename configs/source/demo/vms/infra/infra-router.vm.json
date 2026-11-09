@@ -1,0 +1,14 @@
+{
+  "id": "c3d62da6-9b30-55dd-be7e-4db6c99485ac",
+  "name": "gate",
+  "type": "router",
+  "vcpu": 1,
+  "ram_mib": 2048,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 16
+    }
+  ]
+}

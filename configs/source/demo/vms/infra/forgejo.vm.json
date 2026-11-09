@@ -1,0 +1,14 @@
+{
+  "id": "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561",
+  "name": "git",
+  "type": "forgejo",
+  "vcpu": 2,
+  "ram_mib": 2048,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 24
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+- name: Prepare application certificates inside the shared Vault
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/k0s/secrets.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    project_root: "{{ playbook_dir }}/../.."
+  vars_prompt:
+    - name: vault_password
+      prompt: Shared Vault password
+      private: true
+      confirm: true
+  tasks:
+    - name: Select the existing PKI section without changing other secrets
+      ansible.builtin.set_fact:
+        pki_store: "{{ vault_store.pki }}"
+        pki_changed: false
+      no_log: true
+
+    - name: Prepare the certificate authority in memory
+      ansible.builtin.include_tasks: stages/pki-authority.yml
+
+    - name: Prepare declared application certificates in memory
+      ansible.builtin.include_tasks: stages/pki-certificate.yml
+      loop: "{{ certificates }}"
+      loop_control:
+        loop_var: certificate
+
+    - name: Retain the updated PKI in the complete secret store
+      ansible.builtin.set_fact:
+        vault_store: "{{ vault_store | combine({'pki': pki_store}) }}"
+      when: pki_changed
+      no_log: true
+
+    - name: Save the shared Vault only after a certificate change
+      ansible.builtin.include_role:
+        name: vault
+        tasks_from: write
+      when: pki_changed
+
+    - name: Export the public trust anchor
+      ansible.builtin.copy:
+        content: "{{ pki_store.ca.certificate }}"
+        dest: "{{ project_root }}/{{ settings.public_ca_file }}"
+        mode: '0644'

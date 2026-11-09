@@ -1,0 +1,33 @@
+- name: Install only the compiled guest filesystem protection
+  delegate_to: "{{ hypervisor_backup_guest_units.key }}"
+  become: true
+  vars:
+    ansible_user: "{{ hostvars[hypervisor_backup_guest_units.key].access.admin_user }}"
+    ansible_private_key: "{{ vault_store.guests[hypervisor_backup_guest_units.key].private_key }}"
+    ansible_private_key_passphrase: "{{ vault_store.guests[hypervisor_backup_guest_units.key].key_passphrase }}"
+    ansible_become_password: "{{ vault_store.guests[hypervisor_backup_guest_units.key].sudo_password }}"
+  block:
+    - name: Persist the prepared freeze and watchdog definitions
+      ansible.builtin.template:
+        src: systemd-unit.j2
+        dest: "{{ hypervisor_backup_guest_units.value.unit_directory }}/{{ item.key }}"
+        mode: '0644'
+      vars:
+        hypervisor_unit_definition: "{{ item.value }}"
+      loop: "{{ hypervisor_backup_guest_units.value.units | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: hypervisor_backup_guest_unit_files
+
+    - name: Validate only these generated guest units with systemd
+      ansible.builtin.command:
+        argv: >-
+          {{ ['systemd-analyze', 'verify'] + hypervisor_backup_guest_units.value.units.keys() |
+             map('regex_replace', '^', hypervisor_backup_guest_units.value.unit_directory ~ '/') | list }}
+      changed_when: false
+      when: hypervisor_backup_guest_unit_files.changed
+
+    - name: Load the prepared guest definitions without starting a freeze
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: hypervisor_backup_guest_unit_files.changed

@@ -1,0 +1,10 @@
+- name: Require the prepared physical PCI plan
+  ansible.builtin.assert:
+    that:
+      - hypervisor_pci is defined
+
+- name: Inspect firmware and the declared PCI device classes
+  ansible.builtin.include_tasks: pci-observe.yml
+
+- name: Verify actual isolation groups without binding a driver
+  ansible.builtin.include_tasks: pci-verify.yml

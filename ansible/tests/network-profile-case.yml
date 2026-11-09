@@ -1,0 +1,58 @@
+- name: Supply a real initial SSH profile with existing authentication and jump settings
+  ansible.builtin.copy:
+    content: |
+      Host {{ hypervisor_bootstrap_alias }}
+          HostName 192.0.2.90
+          User original-admin
+          Port 2200
+          IdentityFile /test/hardware-key
+          ProxyJump existing-bastion
+          StrictHostKeyChecking yes
+      {% if profile_case.host_key_alias %}
+          HostKeyAlias {{ profile_case.host_key_alias }}
+      {% endif %}
+    dest: "{{ profile_directory.path }}/config"
+    mode: '0600'
+
+- name: Read the original profile using native OpenSSH
+  ansible.builtin.command:
+    argv: [ssh, -G, -F, "{{ profile_directory.path }}/config", "{{ hypervisor_bootstrap_alias }}"]
+  changed_when: false
+  register: hypervisor_bootstrap_profile
+
+- name: Apply the production address transition to the isolated profile
+  ansible.builtin.include_tasks: ../roles/hypervisor/tasks/network-profile.yml
+  vars:
+    hypervisor_reconnect:
+      address: 192.0.2.2
+      ssh_config: "{{ profile_directory.path }}/config"
+      marker: '# {mark} bootstrap address'
+
+- name: Read the transformed profile using native OpenSSH
+  ansible.builtin.command:
+    argv: [ssh, -G, -F, "{{ profile_directory.path }}/config", "{{ hypervisor_bootstrap_alias }}"]
+  changed_when: false
+  register: hypervisor_bootstrap_profile
+
+- name: Require the new address and preserved identity and transport
+  ansible.builtin.assert:
+    that:
+      - "'hostname 192.0.2.2' in hypervisor_bootstrap_profile.stdout_lines"
+      - "('hostkeyalias ' ~ profile_case.expected_key_alias) in hypervisor_bootstrap_profile.stdout_lines"
+      - "'user original-admin' in hypervisor_bootstrap_profile.stdout_lines"
+      - "'port 2200' in hypervisor_bootstrap_profile.stdout_lines"
+      - "'identityfile /test/hardware-key' in hypervisor_bootstrap_profile.stdout_lines"
+      - "'proxyjump existing-bastion' in hypervisor_bootstrap_profile.stdout_lines"
+      - "'stricthostkeychecking true' in hypervisor_bootstrap_profile.stdout_lines"
+
+- name: Repeat with the already transformed profile as input
+  ansible.builtin.include_tasks: ../roles/hypervisor/tasks/network-profile.yml
+  vars:
+    hypervisor_reconnect:
+      address: 192.0.2.2
+      ssh_config: "{{ profile_directory.path }}/config"
+      marker: '# {mark} bootstrap address'
+
+- name: Require the trust naming decision to remain stable
+  ansible.builtin.assert:
+    that: not hypervisor_bootstrap_ssh_config.changed

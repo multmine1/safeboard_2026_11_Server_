@@ -1,0 +1,262 @@
+{
+  "name": "admin-portal",
+  "vm": "51ca2996-3113-5182-84d3-56bc448f55a8",
+  "enabled": true,
+  "component": "admin-portal",
+  "depends_on": [
+    "application-access"
+  ],
+  "secrets": {
+    "admin-portal-auth": {
+      "provider": "vault"
+    },
+    "admin-portal-tls": {
+      "provider": "certificate",
+      "host_services": [
+        "admin"
+      ]
+    }
+  },
+  "navigation": [
+    {
+      "label": "Почта",
+      "access": "https-cloud",
+      "description": "Личный ящик в Nextcloud Mail",
+      "group": "Работа",
+      "icon": "M",
+      "path": "/apps/mail/"
+    },
+    {
+      "label": "Файлы",
+      "access": "https-cloud",
+      "description": "Документы и личное облако",
+      "group": "Работа",
+      "icon": "F"
+    },
+    {
+      "label": "Внутренний Git",
+      "access": "artifacts",
+      "description": "Репозитории, Actions и поставка",
+      "group": "Работа",
+      "icon": "G"
+    },
+    {
+      "label": "Портфолио",
+      "access": "https-portfolio",
+      "description": "Публичное зеркало избранных проектов",
+      "group": "Работа",
+      "icon": "P"
+    },
+    {
+      "label": "Registry",
+      "access": "registry",
+      "description": "Образы и пакеты приложений",
+      "group": "Управление",
+      "icon": "R"
+    },
+    {
+      "label": "Cockpit",
+      "access": "cockpit",
+      "description": "Виртуальные машины и гипервизор",
+      "group": "Управление",
+      "icon": "C"
+    },
+    {
+      "label": "Grafana",
+      "access": "grafana",
+      "description": "Панели инфраструктуры и приложений",
+      "group": "Наблюдаемость",
+      "icon": "G"
+    },
+    {
+      "label": "Метрики",
+      "access": "metrics",
+      "description": "VictoriaMetrics: запросы и данные",
+      "group": "Наблюдаемость",
+      "icon": "V"
+    },
+    {
+      "label": "Логи",
+      "access": "logs",
+      "description": "VictoriaLogs: поиск событий",
+      "group": "Наблюдаемость",
+      "icon": "L"
+    },
+    {
+      "label": "Почтовый сервер",
+      "access": "mail-admin",
+      "description": "Администрирование Stalwart",
+      "group": "Управление",
+      "icon": "S"
+    }
+  ],
+  "registry_references": {
+    "image": {
+      "connection": "registry",
+      "path": "{{ registry_admin.username }}/admin-portal"
+    },
+    "bundle": {
+      "connection": "registry",
+      "path": "{{ registry_admin.username }}/admin-portal-bundle"
+    }
+  },
+  "compute": {
+    "main": {
+      "replicas": 1,
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 20,
+            "ram_mib": 32
+          },
+          "limits": {
+            "cpu_millicores": 200,
+            "ram_mib": 128
+          }
+        }
+      }
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "admin-portal"
+      },
+      "automountServiceAccountToken": false,
+      "imagePullSecrets": [
+        {
+          "name": "registry-pull"
+        }
+      ]
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "admin-portal-navigation"
+      },
+      "data": {
+        "links.json": []
+      }
+    }
+  ],
+  "files": {
+    "delivery-values.json": {
+      "image": {
+        "ref": ""
+      },
+      "service": {
+        "externalIPs": []
+      },
+      "serviceAccountName": "admin-portal",
+      "navigationConfigMap": "admin-portal-navigation",
+      "authSecret": "admin-portal-auth",
+      "tlsSecret": "admin-portal-tls",
+      "podSecurityContext": {
+        "runAsNonRoot": true,
+        "runAsUser": 101,
+        "runAsGroup": 101,
+        "fsGroup": 101,
+        "seccompProfile": {
+          "type": "RuntimeDefault"
+        }
+      },
+      "securityContext": {
+        "readOnlyRootFilesystem": true,
+        "allowPrivilegeEscalation": false,
+        "capabilities": {
+          "drop": [
+            "ALL"
+          ]
+        }
+      }
+    },
+    "ci-project.json": {
+      "repository": {},
+      "release": "",
+      "base_image": "",
+      "namespace": "",
+      "image_repository": "",
+      "bundle_repository": ""
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/navigation",
+      "path": "/resources/1/data/links.json"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/files/delivery-values.json/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/files/delivery-values.json/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/files/delivery-values.json/service/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/admin-backend/port",
+      "path": "/files/delivery-values.json/service/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/files/delivery-values.json/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/files/delivery-values.json/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/files/ci-project.json/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/delivery/repository",
+      "path": "/files/ci-project.json/repository"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/delivery/release",
+      "path": "/files/ci-project.json/release"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/base_image",
+      "path": "/files/ci-project.json/base_image"
+    },
+    {
+      "op": "copy",
+      "from": "/context/registry_references/image",
+      "path": "/files/ci-project.json/image_repository"
+    },
+    {
+      "op": "copy",
+      "from": "/context/registry_references/bundle",
+      "path": "/files/ci-project.json/bundle_repository"
+    },
+    {
+      "op": "copy",
+      "from": "/context/fingerprint",
+      "path": "/files/ci-project.json/deployment_revision"
+    }
+  ],
+  "json_fields": [
+    "/resources/1/data/links.json",
+    "/files/delivery-values.json",
+    "/files/ci-project.json"
+  ]
+}

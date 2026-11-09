@@ -1,0 +1,85 @@
+- name: Prepare the CI signing identity in the shared Vault
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars_prompt:
+    - name: vault_password
+      prompt: Shared Vault password
+      private: true
+      confirm: true
+  tasks:
+    - name: Read the prepared CI plan and pinned signing requirements
+      ansible.builtin.include_vars:
+        file: "{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: ../../configs/generated/k0s/applications/deployment.json, name: apps}
+        - {file: ../../k0s/requirements/components.json, name: components}
+
+    - name: Remember whether this run needs a signing identity
+      ansible.builtin.set_fact:
+        ci_signing_missing: "{{ 'ci-signing' not in vault_store.applications.get(apps.applications.ci.namespace, {}) }}"
+
+    - name: Generate only a missing CI signing identity
+      when: ci_signing_missing
+      block:
+        - name: Select the administrator and generate the encryption password in memory
+          ansible.builtin.set_fact:
+            ci_host: "{{ vault_store.guests[apps.applications.ci.vm] }}"
+            signing_password: >-
+              {{ lookup('ansible.builtin.password', '/dev/null', length=components.ci.signing.password_length,
+                        chars=['ascii_letters', 'digits']) }}
+          no_log: true
+
+        - name: Generate the encrypted key pair with native Cosign on its CI host
+          delegate_to: "{{ apps.applications.ci.vm }}"
+          become: true
+          vars:
+            ansible_user: "{{ hostvars[hostvars['localhost'].apps.applications.ci.vm].access.admin_user }}"
+            ansible_private_key: "{{ hostvars['localhost'].ci_host.private_key }}"
+            ansible_private_key_passphrase: "{{ hostvars['localhost'].ci_host.key_passphrase }}"
+            ansible_become_password: "{{ hostvars['localhost'].ci_host.sudo_password }}"
+          block:
+            - name: Create a private temporary directory
+              ansible.builtin.tempfile:
+                state: directory
+              register: signing_directory
+
+            - name: Generate the encrypted Cosign private key and public key
+              ansible.builtin.command:
+                argv: ["{{ components.ci.signing.binary }}", generate-key-pair,
+                       --output-key-prefix, "{{ signing_directory.path }}/cosign"]
+              environment:
+                COSIGN_PASSWORD: "{{ signing_password }}"
+              changed_when: true
+              no_log: true
+
+            - name: Read the encrypted private key and public key into controller memory
+              ansible.builtin.slurp:
+                src: "{{ signing_directory.path }}/{{ item }}"
+              loop: [cosign.key, cosign.pub]
+              register: signing_files
+              no_log: true
+          always:
+            - name: Remove the temporary encrypted key files
+              ansible.builtin.file:
+                path: "{{ signing_directory.path }}"
+                state: absent
+              when: signing_directory.path is defined
+
+        - name: Bind the encrypted key pair and password without changing other credentials
+          ansible.builtin.set_fact:
+            vault_store: >-
+              {{ vault_store | combine({'ci': {'signing_password': signing_password}, 'applications': {
+                   apps.applications.ci.namespace: {'ci-signing': {'type': 'Opaque', 'stringData': {
+                     'cosign.key': signing_files.results[0].content | b64decode,
+                     'cosign.pub': signing_files.results[1].content | b64decode}}}}}, recursive=true) }}
+          no_log: true
+
+        - name: Save the entire shared Vault with the new signing identity
+          ansible.builtin.include_role:
+            name: vault
+            tasks_from: write

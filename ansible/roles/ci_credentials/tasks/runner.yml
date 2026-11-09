@@ -1,0 +1,36 @@
+- name: Read the saved runner from this Forgejo instance
+  ansible.builtin.uri:
+    url: "{{ forgejo_origin }}/api/v1/user/actions/runners/{{ ci_credentials_runner_before.id }}"
+    headers: {Authorization: "token {{ ci_credentials_api.api_token }}"}
+    ca_path: "{{ forgejo_ca.path }}"
+    status_code: [200, 404]
+  when: ci_credentials_runner_before.get('id', 0) | int > 0
+  register: ci_credentials_runner_identity
+  no_log: true
+
+- name: Match the runner UUID as well as its database ID
+  ansible.builtin.set_fact:
+    ci_credentials_runner_missing: >-
+      {{ ci_credentials_runner_identity.status | default(404) != 200 or
+         ci_credentials_runner_identity.json.uuid != ci_credentials_runner_before.get('uuid', '') or
+         ci_credentials_runner_before.get('token', '') | length == 0 }}
+  no_log: true
+
+- name: Register a missing user-level runner with the native Forgejo API
+  ansible.builtin.uri:
+    url: "{{ forgejo_origin }}/api/v1/user/actions/runners"
+    method: POST
+    headers: {Authorization: "token {{ ci_credentials_api.api_token }}"}
+    ca_path: "{{ forgejo_ca.path }}"
+    body_format: json
+    body: "{{ ci_credentials_runner_spec }}"
+    status_code: 201
+  when: ci_credentials_runner_missing
+  register: ci_credentials_runner_created
+  changed_when: true
+  no_log: true
+
+- name: Retain the registered identity without treating offline runners as missing
+  ansible.builtin.set_fact:
+    ci_credentials_runner: "{{ ci_credentials_runner_created.json if ci_credentials_runner_missing else ci_credentials_runner_before }}"
+  no_log: true

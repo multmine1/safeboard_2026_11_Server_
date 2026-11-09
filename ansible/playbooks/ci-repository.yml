@@ -1,0 +1,67 @@
+- name: Prepare the private portal repository and its native delivery settings
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  vars_prompt:
+    - name: vault_password
+      prompt: Shared Vault password
+      private: true
+      confirm: true
+  tasks:
+    - name: Read the compiled application, access and tool plans
+      ansible.builtin.include_vars:
+        file: "{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: ../../configs/generated/k0s/applications/deployment.json, name: apps}
+        - {file: ../../configs/generated/ansible/local-access.json, name: local_access}
+        - {file: ../../k0s/requirements/components.json, name: components}
+        - {file: ../../configs/generated/k0s/applications/admin-portal/ci-project.json, name: ci_project}
+
+    - name: Bind the prepared repository metadata and its existing service accounts
+      ansible.builtin.set_fact:
+        forgejo_admin: "{{ vault_store.applications[apps.applications.forgejo.namespace]['forgejo-admin'].stringData }}"
+        registry_admin: "{{ vault_store.applications[apps.applications.registry.namespace]['registry-admin'].stringData }}"
+        ci_repository_checkout: "{{ playbook_dir }}/../../environment/.tools/git/{{ ci_project.repository.name }}"
+        ci_repository_origin: "{{ apps.applications.ci.guest.registration.instance | regex_replace('/$', '') }}"
+        ci_delivery_values: "{{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/generated/k0s/applications/admin-portal/delivery-values.json') }}"
+      no_log: true
+
+    - name: Prepare the native private repository, variables and secrets
+      ansible.builtin.include_role:
+        name: ci_repository
+        tasks_from: api
+
+    - name: Publish only the portal source and workflow through native Git
+      ansible.builtin.include_role:
+        name: ci_repository
+        tasks_from: source
+
+    - name: Trigger changed delivery inputs when Git did not start a new run
+      ansible.builtin.include_role:
+        name: ci_repository
+        tasks_from: dispatch
+      when:
+        - not ci_repository_source_push.changed
+        - ci_repository_variables_changed or ci_repository_delivered_secrets is changed
+
+    - name: Retain the delivered Secret revision in the complete shared store
+      ansible.builtin.set_fact:
+        vault_store: >-
+          {{ vault_store | combine({'ci': {'repository_secrets': {
+               ci_project.repository.name: ci_repository_secret_revision}}}, recursive=true) }}
+      when: >-
+        vault_store.ci.get('repository_secrets', {}).get(ci_project.repository.name, '') != ci_repository_secret_revision
+      register: ci_repository_record
+      changed_when: true
+      no_log: true
+
+    - name: Save the shared store only after a delivered Secret revision changes
+      ansible.builtin.include_role:
+        name: vault
+        tasks_from: write
+      when: ci_repository_record is changed

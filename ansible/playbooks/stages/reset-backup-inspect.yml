@@ -1,0 +1,17 @@
+- name: Select existing native observations for only the prepared backup paths
+  ansible.builtin.set_fact:
+    reset_backup_paths: >-
+      {{ reset_host_paths.results | selectattr('item', 'in',
+         reset.backup_repository_access.parents + [reset.backup_repository_access.repository]) | list }}
+
+- name: Require complete metadata for backup permission targets
+  ansible.builtin.assert:
+    that: reset_backup_paths | length == reset.backup_repository_access.parents | length + 1
+
+- name: Refuse backup permission changes through a link or a non-directory
+  ansible.builtin.assert:
+    that: not item.stat.exists or item.stat.isdir | default(false)
+    fail_msg: Backup permission targets must be directories or absent before teardown.
+  loop: "{{ reset_backup_paths }}"
+  loop_control:
+    label: "{{ item.item }}"

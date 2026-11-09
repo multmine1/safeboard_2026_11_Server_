@@ -1,0 +1,21 @@
+- name: Withdraw only declared VM routes on the hypervisor
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the remaining physical bridge routes
+      ansible.builtin.command:
+        argv: [ip, -json, -4, route, show, dev, "{{ reset.network.bridge }}"]
+      register: reset_remaining_routes
+      changed_when: false
+      check_mode: false
+
+    - name: Remove only a residual route to the reviewed project gateway
+      ansible.builtin.command:
+        argv: [ip, route, del, "{{ item.to }}", via, "{{ item.via }}", dev, "{{ reset.network.bridge }}"]
+      become: true
+      loop: "{{ reset.vm_routes }}"
+      when: >-
+        reset_remaining_routes.stdout | from_json | selectattr('gateway', 'defined') |
+        selectattr('dst', 'equalto', item.to) | selectattr('gateway', 'equalto', item.via) | list | length > 0
+      changed_when: true

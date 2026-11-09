@@ -1,0 +1,68 @@
+- name: Prepare the pinned Linux controller environment
+  hosts: hypervisors
+  become: false
+  gather_facts: false
+  vars_files:
+    - ../../environment/requirements/bootstrap.json
+  vars:
+    controller_tools: "{{ controller_project_directory }}/environment/.tools"
+    controller_conda: "{{ controller_tools }}/anaconda/bin/conda"
+  tasks:
+    - name: Create the controller tool directory
+      ansible.builtin.file:
+        path: "{{ controller_tools }}"
+        state: directory
+        mode: '0750'
+
+    - name: Download the pinned official Anaconda installer
+      ansible.builtin.get_url:
+        url: "{{ installers['linux-64'].url }}"
+        checksum: "sha256:{{ installers['linux-64'].sha256 }}"
+        dest: "{{ controller_tools }}/anaconda-install.sh"
+        mode: '0700'
+
+    - name: Install Anaconda inside the project
+      ansible.builtin.command:
+        argv: [bash, "{{ controller_tools }}/anaconda-install.sh", -b, -p, "{{ controller_tools }}/anaconda"]
+        creates: "{{ controller_conda }}"
+
+    - name: Use the declared package channels
+      ansible.builtin.copy:
+        src: ../../environment/requirements/condarc.yml
+        dest: "{{ controller_tools }}/anaconda/.condarc"
+        mode: '0644'
+
+    - name: Create the environment from the native multi-platform lock
+      ansible.builtin.command:
+        argv: ["{{ controller_conda }}", create, -n, skeleton, --file,
+               "{{ controller_project_directory }}/environment/requirements/conda-lock.yml", --yes]
+        creates: "{{ controller_tools }}/anaconda/envs/skeleton/conda-meta/history"
+
+    - name: Install the pinned Ansible collections
+      ansible.builtin.command:
+        argv: ["{{ controller_tools }}/anaconda/envs/skeleton/bin/ansible-galaxy", collection, install, -r, requirements/collections.yml]
+        chdir: "{{ controller_project_directory }}/ansible"
+      register: controller_collections
+      changed_when: "'Nothing to do.' not in controller_collections.stdout"
+
+    - name: Configure the C++ project in its declared build directory
+      ansible.builtin.command:
+        argv: ["{{ controller_conda }}", run, -n, skeleton, cmake, --preset, default]
+        chdir: "{{ controller_project_directory }}/cpp"
+      changed_when: false
+
+    - name: Build the configuration generator
+      ansible.builtin.command:
+        argv: ["{{ controller_conda }}", run, -n, skeleton, cmake, --build, "{{ controller_tools }}/build/cpp"]
+      changed_when: false
+
+    - name: Run the project behavior tests on Linux
+      ansible.builtin.command:
+        argv: ["{{ controller_conda }}", run, -n, skeleton, ctest, --test-dir, "{{ controller_tools }}/build/cpp", --output-on-failure]
+      changed_when: false
+
+    - name: Generate the server's configuration from source JSON
+      ansible.builtin.command:
+        argv: ["{{ controller_conda }}", run, -n, skeleton, "{{ controller_tools }}/build/cpp/config-generator",
+               "{{ controller_project_directory }}/configs/source/demo", "{{ controller_project_directory }}/configs/generated"]
+      changed_when: false

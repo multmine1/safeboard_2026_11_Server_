@@ -1,0 +1,13 @@
+- name: Cache the official pinned kubeseal archive
+  ansible.builtin.get_url:
+    url: "{{ secret_plan.settings.kubeseal.url }}"
+    checksum: "{{ secret_plan.settings.kubeseal.checksum }}"
+    dest: "{{ secret_plan.settings.kubeseal.archive }}"
+    mode: "{{ cluster.settings.deployment.file_mode }}"
+
+- name: Install kubeseal on the controller
+  ansible.builtin.unarchive:
+    src: "{{ secret_plan.settings.kubeseal.archive }}"
+    dest: "{{ secret_plan.settings.kubeseal.directory }}"
+    include: [kubeseal]
+    remote_src: true

@@ -1,0 +1,54 @@
+- name: Select the existing mail section without changing other Vault data
+  ansible.builtin.set_fact:
+    mail_credentials_store: "{{ vault_store.get('mail', {}) }}"
+    mail_credentials_vault_before: "{{ vault_store }}"
+  no_log: true
+
+- name: Prepare only missing mail identities
+  ansible.builtin.include_tasks: account.yml
+  loop: "{{ mail_credentials_plan.accounts['value'] | dict2items }}"
+  loop_control:
+    loop_var: mail_credentials_account
+    label: "{{ mail_credentials_account.key }}"
+  when: mail_credentials_account.value.name not in mail_credentials_store.get('accounts', {})
+
+- name: Prepare missing database and temporary recovery credentials
+  ansible.builtin.set_fact:
+    mail_credentials_store: >-
+      {{ mail_credentials_store | combine({item: lookup('ansible.builtin.password', '/dev/null',
+           length=mail_credentials_plan.password_length, chars=['ascii_letters', 'digits'])}) }}
+  loop: [database_password, recovery_password]
+  when: item not in mail_credentials_store
+  no_log: true
+
+- name: Prepare native Secrets from the generated account plan
+  ansible.builtin.set_fact:
+    mail_credentials_application_secrets:
+      stalwart-accounts:
+        type: Opaque
+        stringData:
+          accounts.ndjson: "{{ lookup('ansible.builtin.template', 'accounts.ndjson.j2') }}"
+          recovery-admin: "{{ mail_credentials_plan.bootstrap_username }}:{{ mail_credentials_store.recovery_password }}"
+          recovery-password: "{{ mail_credentials_store.recovery_password }}"
+      stalwart-postgres:
+        type: kubernetes.io/basic-auth
+        stringData:
+          username: "{{ mail_credentials_plan.database_username }}"
+          password: "{{ mail_credentials_store.database_password }}"
+  no_log: true
+
+- name: Merge prepared mail Secrets into the complete shared store # noqa var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    vault_store: >-
+      {{ vault_store | combine({'mail': mail_credentials_store, 'applications': {
+           mail_credentials_plan.namespace: mail_credentials_application_secrets}}, recursive=true) }}
+  no_log: true
+
+- name: Prepare separate SMTP Secrets for the declared applications
+  ansible.builtin.include_tasks: clients.yml
+
+- name: Save the shared Vault only after a mail credential change
+  ansible.builtin.include_role:
+    name: vault
+    tasks_from: write
+  when: vault_store != mail_credentials_vault_before

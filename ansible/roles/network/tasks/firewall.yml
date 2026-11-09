@@ -1,0 +1,14 @@
+- name: Persist the prepared firewall policy
+  ansible.builtin.copy:
+    content: "{{ network_plan.files[network_plan.firewall_path] }}"
+    dest: "{{ network_plan.firewall_path }}"
+    mode: "{{ network_plan.file_modes[network_plan.firewall_path] | default(network_plan.file_mode) }}"
+    validate: "{{ network_plan.nft_validate }}"
+    backup: true
+  register: network_firewall_file
+
+- name: Apply the changed nftables file
+  ansible.builtin.command:
+    argv: [nft, -f, "{{ network_plan.firewall_path }}"]
+  when: network_firewall_file.changed
+  changed_when: true

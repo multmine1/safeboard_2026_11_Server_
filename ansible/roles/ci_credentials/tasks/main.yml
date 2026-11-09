@@ -1,0 +1,5 @@
+- name: Reconcile the scoped API identity
+  ansible.builtin.import_tasks: token.yml
+
+- name: Reconcile the registered runner identity
+  ansible.builtin.import_tasks: runner.yml

@@ -1,0 +1,38 @@
+- name: Read native logged-in user identities
+  ansible.builtin.command:
+    argv: [loginctl, list-users, --json=short]
+  become: true
+  register: reset_logged_users
+  changed_when: false
+
+- name: Close only the reviewed libvirt account sessions after provider teardown
+  ansible.builtin.command:
+    argv: [loginctl, terminate-user, "{{ reset.account.name }}"]
+  become: true
+  when: reset_logged_users.stdout | from_json | selectattr('user', 'equalto', reset.account.name) | list | length > 0
+  changed_when: true
+
+- name: Wait for the disposable account processes to exit
+  ansible.builtin.command:
+    argv: [pgrep, -u, "{{ reset_removable_account.ansible_facts.getent_passwd[reset.account.name][1] }}"]
+  become: true
+  register: reset_account_processes
+  when: reset_removable_account.ansible_facts.getent_passwd[reset.account.name] is not none
+  changed_when: false
+  failed_when: reset_account_processes.rc not in [0, 1]
+  until: reset_account_processes.rc == 1
+  retries: "{{ reset.session_retries }}"
+  delay: "{{ reset.session_delay_seconds }}"
+
+- name: Remove the reviewed libvirt account and its private home
+  ansible.builtin.user:
+    name: "{{ reset.account.name }}"
+    state: absent
+    remove: true
+  become: true
+
+- name: Remove the reviewed orphan home if a previous user removal left it behind
+  ansible.builtin.file:
+    path: "{{ reset.account.home }}"
+    state: absent
+  become: true

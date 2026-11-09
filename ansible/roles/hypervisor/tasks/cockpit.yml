@@ -1,0 +1,42 @@
+- name: Prepare the declared package repositories
+  ansible.builtin.import_tasks: package-sources.yml
+
+- name: Create the Cockpit socket override directory
+  ansible.builtin.file:
+    path: "{{ hypervisor_cockpit.dropin | dirname }}"
+    state: directory
+    mode: "{{ hypervisor_cockpit.directory_mode }}"
+
+- name: Bind Cockpit to its declared private endpoint before installation
+  ansible.builtin.template:
+    src: cockpit-listen.conf.j2
+    dest: "{{ hypervisor_cockpit.dropin }}"
+    mode: "{{ hypervisor_file_mode }}"
+  notify: Restart Cockpit socket
+
+- name: Install the pinned Cockpit components
+  ansible.builtin.apt:
+    name: "{{ cockpit_packages }}"
+    update_cache: true
+    install_recommends: false
+    policy_rc_d: 101
+
+- name: Hold the managed Cockpit package versions
+  ansible.builtin.dpkg_selections:
+    name: "{{ item.split('=')[0] }}"
+    selection: hold
+  loop: "{{ cockpit_packages }}"
+
+- name: Install the prepared Cockpit identity
+  ansible.builtin.import_tasks: cockpit-tls.yml
+  when: >-
+    hypervisor_cockpit.certificate is defined and
+    (hypervisor_cockpit.tls.namespace ~ '/' ~ hypervisor_cockpit.tls.name)
+      in vault_store.pki.certificates
+
+- name: Enable the private Cockpit socket
+  ansible.builtin.systemd_service:
+    name: "{{ hypervisor_cockpit.socket }}"
+    state: started
+    enabled: true
+    daemon_reload: true

@@ -1,0 +1,96 @@
+- name: Accept the delivered private portal through the existing SSH SOCKS5 path
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    portal_root: "{{ playbook_dir | dirname | dirname }}"
+    portal_access: "{{ lookup('ansible.builtin.file', portal_root ~ '/configs/generated/ansible/local-access.json') | from_json }}"
+    portal_url: "{{ portal_access.forwards.admin.remote_url }}"
+    portal_credentials: "{{ vault_store.admin_portal }}"
+    portal_resources: >-
+      {{ lookup('ansible.builtin.file', portal_root ~ '/configs/generated/k0s/applications/admin-portal/manifests.json') | from_json }}
+    portal_navigation: >-
+      {{ (portal_resources['items'] | selectattr('kind', 'equalto', 'ConfigMap') | first).data['links.json'] | from_json }}
+  tasks:
+    - name: Require the private login boundary and working credentials
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --socks5-hostname
+          - "{{ portal_access.socks_address }}"
+          - --cacert
+          - "{{ portal_root }}/configs/secrets/ca.crt"
+          - --max-time
+          - '20'
+          - --config
+          - '-'
+          - --output
+          - /dev/null
+          - --write-out
+          - '%{http_code}'
+          - "{{ portal_url }}"
+        stdin: >-
+          {{ '' if item.auth == 'none' else 'user = ' ~ ((portal_credentials.username ~ ':' ~
+             (portal_credentials.password if item.auth == 'valid' else 'incorrect-fixture')) | to_json) }}
+      loop:
+        - {name: anonymous, auth: none, expected: '401'}
+        - {name: wrong-password, auth: wrong, expected: '401'}
+        - {name: valid-login, auth: valid, expected: '200'}
+      loop_control:
+        label: "{{ item.name }}"
+      register: portal_response
+      failed_when: portal_response.rc != 0 or portal_response.stdout != item.expected
+      changed_when: false
+      no_log: true
+
+    - name: Read only the authenticated generated navigation
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --socks5-hostname
+          - "{{ portal_access.socks_address }}"
+          - --cacert
+          - "{{ portal_root }}/configs/secrets/ca.crt"
+          - --max-time
+          - '20'
+          - --config
+          - '-'
+          - --fail
+          - "{{ portal_url }}links.json"
+        stdin: "user = {{ (portal_credentials.username ~ ':' ~ portal_credentials.password) | to_json }}"
+      register: portal_navigation_response
+      changed_when: false
+      no_log: true
+
+    - name: Require the served navigation to match the prepared infrastructure plan
+      ansible.builtin.assert:
+        that: portal_navigation_response.stdout | from_json == portal_navigation
+      no_log: true
+
+    - name: Check the stylesheet and JavaScript served by the actual image
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --socks5-hostname
+          - "{{ portal_access.socks_address }}"
+          - --cacert
+          - "{{ portal_root }}/configs/secrets/ca.crt"
+          - --max-time
+          - '20'
+          - --config
+          - '-'
+          - --fail
+          - --output
+          - /dev/null
+          - "{{ portal_url }}{{ item }}"
+        stdin: "user = {{ (portal_credentials.username ~ ':' ~ portal_credentials.password) | to_json }}"
+      loop: [style.css, portal.js, select_links.mjs]
+      changed_when: false
+      no_log: true
+
+    - name: Report only the accepted access contract
+      ansible.builtin.debug:
+        msg: Anonymous and wrong-password requests return401; valid login200; navigation matches source; static assets accepted with projectCA.

@@ -1,0 +1,36 @@
+- name: Apply the prepared physical profile on the hypervisor
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Persist the prepared physical bridge profile for this reset stage
+      ansible.builtin.copy:
+        content: "{{ reset_netplan | to_nice_json }}\n"
+        dest: "{{ reset.network.path }}"
+        mode: "{{ reset.network.mode }}"
+      become: true
+      register: reset_netplan_written
+
+    - name: Generate the native NetworkManager profiles
+      ansible.builtin.command: netplan generate
+      become: true
+      changed_when: reset_netplan_written.changed
+
+    - name: Reload the generated NetworkManager profiles
+      ansible.builtin.command: nmcli connection reload
+      become: true
+      changed_when: reset_netplan_written.changed
+
+    - name: Reapply the physical profiles without rebuilding the bridge
+      ansible.builtin.command:
+        argv: [nmcli, device, reapply, "{{ item }}"]
+      become: true
+      loop:
+        - "{{ reset.network.ethernet['set-name'] }}"
+        - "{{ reset.network.bridge }}"
+      changed_when: reset_netplan_written.changed
+
+    - name: Clear obsolete DNS answers after restoring physical DNS
+      ansible.builtin.command: resolvectl flush-caches
+      become: true
+      changed_when: reset_netplan_written.changed

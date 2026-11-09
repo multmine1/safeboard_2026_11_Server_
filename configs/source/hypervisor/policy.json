@@ -1,0 +1,326 @@
+{
+  "ansible_become_exe": "/usr/bin/sudo.ws",
+  "ansible_python_interpreter": "/usr/bin/python3",
+  "hypervisor_cockpit": {
+    "socket": "cockpit.socket",
+    "dropin": "/etc/systemd/system/cockpit.socket.d/listen.conf",
+    "directory_mode": "0755",
+    "service": "cockpit",
+    "unit": "cockpit.service",
+    "tls": {
+      "namespace": "hypervisor",
+      "name": "cockpit-tls",
+      "certificate_file": "/etc/cockpit/ws-certs.d/90-infrastructure.cert",
+      "private_key_file": "/etc/cockpit/ws-certs.d/90-infrastructure.key",
+      "certificate_mode": "0644",
+      "private_key_mode": "0600"
+    },
+    "free_bind": true
+  },
+  "hypervisor_boot": {
+    "target": "/usr/lib/systemd/system/multi-user.target",
+    "link": "/etc/systemd/system/default.target",
+    "display_manager": {
+      "name": "gdm.service",
+      "state": "stopped"
+    }
+  },
+  "hypervisor_pci": {
+    "sysfs_devices": "/sys/bus/pci/devices",
+    "allowed_classes": ["0x030000", "0x030200", "0x040300"]
+  },
+  "hypervisor_sshd": {
+    "path": "/etc/ssh/sshd_config.d/00-hard.conf",
+    "obsolete_paths": [
+      "/etc/ssh/sshd_config.d/60-vmctl.conf"
+    ],
+    "file_mode": "0644",
+    "owner": "root",
+    "group": "root",
+    "global_options": {
+      "PermitRootLogin": "no",
+      "PubkeyAuthentication": "yes",
+      "AuthenticationMethods": "publickey",
+      "PasswordAuthentication": "no",
+      "KbdInteractiveAuthentication": "no",
+      "PermitEmptyPasswords": "no",
+      "HostbasedAuthentication": "no",
+      "GSSAPIAuthentication": "no",
+      "UsePAM": "yes",
+      "StrictModes": "yes",
+      "AuthorizedKeysFile": ".ssh/authorized_keys",
+      "DisableForwarding": "yes",
+      "AllowAgentForwarding": "no",
+      "AllowTcpForwarding": "no",
+      "AllowStreamLocalForwarding": "no",
+      "X11Forwarding": "no",
+      "PermitTunnel": "no",
+      "GatewayPorts": "no",
+      "PermitOpen": "none",
+      "PermitListen": "none",
+      "PermitTTY": "yes",
+      "PermitUserRC": "no",
+      "PermitUserEnvironment": "no",
+      "MaxSessions": "10",
+      "LoginGraceTime": "60s",
+      "MaxAuthTries": "3",
+      "MaxStartups": "10:30:30",
+      "LogLevel": "VERBOSE",
+      "Ciphers": "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com"
+    },
+    "accounts": {
+      "controller": {
+        "options": {
+          "DisableForwarding": "no",
+          "AllowTcpForwarding": "local"
+        },
+        "forward_targets": [
+          "127.0.0.1:8888"
+        ],
+        "service_forwards": false
+      },
+      "libvirt": {
+        "options": {
+          "PubkeyAcceptedAlgorithms": "ssh-ed25519",
+          "DisableForwarding": "no",
+          "AllowTcpForwarding": "local"
+        },
+        "forward_targets": [],
+        "service_forwards": true
+      }
+    },
+    "host_keys": [
+      "/etc/ssh/ssh_host_rsa_key",
+      "/etc/ssh/ssh_host_ecdsa_key",
+      "/etc/ssh/ssh_host_ed25519_key"
+    ],
+    "backup": {
+      "private_file_mode": "0600",
+      "public_file_mode": "0644"
+    }
+  },
+  "project_root": "{{ playbook_dir | dirname | dirname }}",
+  "controller_access": {
+    "ssh_config": ".ssh/config",
+    "known_hosts": ".ssh/known_hosts",
+    "marker": "# {mark} hypervisor"
+  },
+  "macos_public_key_file": "{{ project_root }}/environment/.tools/ssh/vmctl.pub",
+  "generator": {
+    "controller": {
+      "nwfilter": {
+        "path": "/var/lib/skeleton/hypervisor/nwfilter.xml",
+        "references": [
+          "no-mac-spoofing",
+          "no-arp-spoofing"
+        ],
+        "directory_mode": "0755",
+        "file_mode": "0644"
+      },
+      "local_libvirt_uri": "qemu:///system"
+    }
+  },
+  "hypervisor_network": {
+    "path": "/etc/netplan/60-hypervisor.yaml",
+    "mode": "0600",
+    "route_metric": 100,
+    "renderer": "NetworkManager",
+    "ethernet": {
+      "dhcp4": false,
+      "dhcp6": false,
+      "wakeonlan": true,
+      "networkmanager": {
+        "passthrough": {
+          "ethernet.wake-on-lan": "64"
+        }
+      }
+    },
+    "bridge_settings": {
+      "dhcp4": false,
+      "dhcp6": false,
+      "accept-ra": false,
+      "parameters": {
+        "stp": false
+      }
+    },
+    "runtime_marker": "/var/lib/skeleton/hypervisor/network-owner",
+    "wake_port": 9,
+    "backup_directory": "/var/lib/skeleton/hypervisor/netplan-before-managed",
+    "backup_directory_mode": "0700"
+  },
+  "hypervisor_sysctl": {
+    "net.ipv4.ip_forward": 0,
+    "net.ipv6.conf.all.forwarding": 0
+  },
+  "hypervisor_sysctl_file": "/etc/sysctl.d/60-hypervisor.conf",
+  "hypervisor_files": {
+    "/etc/apt/apt.conf.d/20auto-upgrades": "APT::Periodic::Update-Package-Lists \"0\";\nAPT::Periodic::Unattended-Upgrade \"0\";\n"
+  },
+  "hypervisor_file_mode": "0644",
+  "storage_owner": "libvirt-qemu",
+  "storage_group": "libvirt-qemu",
+  "storage_directory_mode": "0750",
+  "hypervisor_reconnect": {
+    "timeout": 90,
+    "delay": 3,
+    "address": "{{ hypervisor_address }}",
+    "ssh_config": "{{ lookup('env', 'HOME') }}/.ssh/config",
+    "marker": "# {mark} hypervisor bootstrap address"
+  },
+  "hypervisor_admin_alias": "localhost",
+  "vmctl_directory_mode": "0750",
+  "storage_traverse_mode": "g+x",
+  "hypervisor_services": {
+    "cockpit": {
+      "port": 443,
+      "scheme": "https",
+      "path": "/"
+    },
+    "host-metrics": {
+      "port": 9273,
+      "scheme": "http",
+      "path": "/metrics"
+    },
+    "admin": {
+      "port": 443,
+      "scheme": "https",
+      "path": "/",
+      "bind_address": "127.0.0.1",
+      "dns_zone": "site"
+    }
+  },
+  "hypervisor_hosts": {
+    "path": "/etc/hosts",
+    "mode": "0644",
+    "marker": "# {mark} skeleton host services"
+  },
+  "hypervisor_monitoring": {
+    "service": "host-metrics",
+    "artifact": "telegraf",
+    "cache_directory": "environment/.tools/artifacts/telegraf",
+    "binary": "/usr/local/lib/telegraf/1.40.3/telegraf",
+    "config_path": "/etc/skeleton/host-metrics.toml",
+    "unit": "skeleton-host-metrics.service",
+    "unit_path": "/etc/systemd/system/skeleton-host-metrics.service",
+    "read_only_socket": "/run/libvirt/libvirt-sock-ro",
+    "directory_mode": "0755",
+    "file_mode": "0644",
+    "configuration": {
+      "agent": {
+        "interval": "30s",
+        "flush_interval": "30s"
+      },
+      "global_tags": {
+        "role": "hypervisor"
+      },
+      "inputs": {
+        "cpu": [
+          {
+            "percpu": false
+          }
+        ],
+        "mem": [
+          {}
+        ],
+        "swap": [
+          {}
+        ],
+        "system": [
+          {}
+        ],
+        "disk": [
+          {}
+        ],
+        "diskio": [
+          {
+            "skip_serial_number": true
+          }
+        ],
+        "net": [
+          {}
+        ],
+        "internal": [
+          {}
+        ],
+        "libvirt": [
+          {
+            "statistics_groups": [
+              "state",
+              "cpu_total",
+              "balloon",
+              "vcpu",
+              "interface",
+              "block"
+            ]
+          }
+        ]
+      },
+      "outputs": {
+        "prometheus_client": [
+          {
+            "expiration_interval": "90s"
+          }
+        ]
+      }
+    },
+    "systemd": {
+      "Unit": {
+        "Description": "Hypervisor and libvirt metrics",
+        "After": "network-online.target libvirtd.service",
+        "Wants": "network-online.target",
+        "Requires": "libvirtd.service"
+      },
+      "Service": {
+        "DynamicUser": "yes",
+        "Restart": "on-failure",
+        "RestartSec": "5s",
+        "NoNewPrivileges": "yes",
+        "PrivateTmp": "yes",
+        "DevicePolicy": "closed",
+        "ProtectSystem": "strict",
+        "ProtectHome": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectControlGroups": "yes",
+        "RestrictAddressFamilies": "AF_UNIX AF_INET AF_NETLINK",
+        "CapabilityBoundingSet": ""
+      },
+      "Install": {
+        "WantedBy": "multi-user.target"
+      }
+    }
+  },
+  "hypervisor_proxy": {
+    "binary": "/usr/lib/systemd/systemd-socket-proxyd",
+    "unit_directory": "/etc/systemd/system",
+    "unit_prefix": "skeleton-proxy-",
+    "socket": {
+      "Install": {
+        "WantedBy": "sockets.target"
+      }
+    },
+    "service": {
+      "Service": {
+        "DynamicUser": "yes"
+      }
+    }
+  },
+  "hypervisor_proxies": {
+    "admin": {
+      "service": "869a28af-38ac-4cab-96eb-e711c41736c5"
+    }
+  },
+  "hypervisor_units": {
+    "NetworkManager.service": [],
+    "libvirtd.service": [
+      "libvirtd.socket",
+      "libvirtd-ro.socket",
+      "libvirtd-admin.socket"
+    ],
+    "ssh.service": [
+      "ssh.socket",
+      "sshd.service",
+      "ssh-access.target"
+    ]
+  }
+}

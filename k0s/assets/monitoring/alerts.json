@@ -1,0 +1,131 @@
+{
+  "groups": [
+    {
+      "name": "host-probe-signals",
+      "interval": "30s",
+      "eval_offset": "0s",
+      "rules": [
+        {
+          "record": "skeleton:host_probe:status",
+          "expr": "max(skeleton_host_probe_success and (time() - timestamp(skeleton_host_probe_success) < 90)) or vector(2)"
+        }
+      ]
+    },
+    {
+      "name": "availability",
+      "rules": [
+        {
+          "alert": "ScrapeTargetDown",
+          "expr": "up{job!=\"hypervisor\"} == 0",
+          "for": "5m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "A configured metrics target is unavailable"
+          }
+        }
+      ]
+    },
+    {
+      "name": "hypervisor",
+      "rules": [
+        {
+          "alert": "HostCollectorUnavailable",
+          "expr": "(up{job=\"hypervisor\"} == 0) and on() (skeleton:host_probe:status == 1)",
+          "for": "2m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Host metrics endpoint is unavailable while the independent TCP probe succeeds"
+          }
+        },
+        {
+          "alert": "LibvirtSamplingErrors",
+          "expr": "increase(internal_gather_gather_errors{job=\"hypervisor\",input=\"libvirt\"}[5m]) > 0",
+          "for": "1m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "The host collector reports libvirt sampling errors"
+          }
+        },
+        {
+          "alert": "VirtualMachineCrashed",
+          "expr": "(libvirt_state_state{job=\"hypervisor\"} == 6) or ((libvirt_state_state{job=\"hypervisor\"} == 5) and on(instance,domain_name) (libvirt_state_reason{job=\"hypervisor\"} == 3))",
+          "for": "1m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Libvirt reports a guest crash"
+          }
+        },
+        {
+          "alert": "VirtualMachineFailed",
+          "expr": "(libvirt_state_state{job=\"hypervisor\"} == 5) and on(instance,domain_name) ((libvirt_state_reason{job=\"hypervisor\"} == 6) or (libvirt_state_reason{job=\"hypervisor\"} == 8))",
+          "for": "1m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Libvirt reports failed startup or daemon termination"
+          }
+        },
+        {
+          "alert": "HypervisorMemoryPressure",
+          "expr": "mem_available_percent{job=\"hypervisor\"} < 10",
+          "for": "5m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Less than 10 percent of physical host RAM is available"
+          }
+        },
+        {
+          "alert": "HypervisorPathUnavailable",
+          "expr": "(up{job=\"hypervisor\"} == 0) and on() (skeleton:host_probe:status == 0)",
+          "for": "2m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Both host endpoints are unreachable from their observers; host or network path may be unavailable"
+          }
+        },
+        {
+          "alert": "HostProbeUnavailable",
+          "expr": "(skeleton:host_probe:status == 2) or absent(skeleton:host_probe:status)",
+          "for": "2m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "The independent host probe is missing or stale; host reachability is unknown"
+          }
+        },
+        {
+          "alert": "CockpitEndpointUnavailable",
+          "expr": "(up{job=\"hypervisor\"} == 1) and on() (skeleton:host_probe:status == 0)",
+          "for": "2m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "The host metrics endpoint responds but the independent Cockpit TCP probe fails"
+          }
+        }
+      ],
+      "interval": "30s",
+      "eval_offset": "15s",
+      "params": {
+        "max_lookback": [
+          "90s"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+- name: Select only this prepared producer and its encrypted identity
+  ansible.builtin.set_fact:
+    backup_capture: "{{ backup_set.value.capture }}"
+    backup_capture_credentials: "{{ vault_store.guests[backup_set.value.capture.vm] }}"
+    backup_remote_capture: {}
+  no_log: true
+
+- name: Reject a staging root redirected by a symbolic link
+  ansible.builtin.assert:
+    that: (backup.capture.local_directory | realpath) == backup.capture.local_directory
+
+- name: Create the private staging root for the controller process
+  ansible.builtin.file:
+    path: "{{ backup.capture.local_directory }}"
+    state: directory
+    mode: "{{ vault_directory_mode }}"
+
+- name: Create an isolated local capture directory
+  ansible.builtin.tempfile:
+    state: directory
+    path: "{{ backup.capture.local_directory }}"
+  become: false
+  register: backup_local_capture
+
+- name: Produce transfer and encrypt one complete capture
+  block:
+    - name: Prepare the native capture on its controller
+      ansible.builtin.include_tasks: capture-guest.yml
+
+    - name: Download the complete archive through native SFTP without become slurp
+      ansible.builtin.fetch:
+        src: "{{ backup_remote_capture.path }}/{{ backup_capture.filename }}"
+        dest: "{{ backup_local_capture.path }}/{{ backup_capture.filename }}"
+        flat: true
+      delegate_to: "{{ backup_capture.vm }}"
+      become: false
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].backup_capture.vm].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].backup_capture_credentials.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].backup_capture_credentials.key_passphrase }}"
+      no_log: true
+
+    - name: Retain private permissions on the downloaded capture
+      ansible.builtin.file:
+        path: "{{ backup_local_capture.path }}/{{ backup_capture.filename }}"
+        mode: "{{ vault_file_mode }}"
+      become: false
+
+    - name: Encrypt the completed capture using its stable snapshot filename
+      ansible.builtin.command:
+        argv: "{{ backup_set.value.argv + [backup_local_capture.path ~ '/' ~ backup_capture.filename] }}"
+        chdir: "{{ backup_set.value.working_directory }}"
+        stdin: "{{ vault_store.backup.repository_password }}"
+      changed_when: true
+      no_log: true
+
+  always:
+    - name: Remove only this producer's temporary guest directory
+      ansible.builtin.file:
+        path: "{{ backup_remote_capture.path }}"
+        state: absent
+      delegate_to: "{{ backup_capture.vm }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].backup_capture.vm].access.admin_user }}"
+        ansible_become_exe: sudo
+        ansible_private_key: "{{ hostvars['localhost'].backup_capture_credentials.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].backup_capture_credentials.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].backup_capture_credentials.sudo_password }}"
+      when: backup_remote_capture.path is defined
+
+    - name: Remove only this producer's temporary local directory
+      ansible.builtin.file:
+        path: "{{ backup_local_capture.path }}"
+        state: absent
+      become: false

@@ -1,0 +1,48 @@
+- name: Check mail client Secret binding without real credentials or a cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    mail_credentials_plan:
+      addresses: {forgejo: forgejo@example.test, nextcloud: nextcloud@example.test}
+      clients:
+        - {application: forgejo, account: forgejo, secret: forgejo-smtp}
+        - {application: nextcloud, account: nextcloud, secret: nextcloud-smtp}
+    mail_credentials_apps:
+      applications:
+        forgejo: {namespace: private}
+        nextcloud: {namespace: public}
+    mail_credentials_store:
+      accounts:
+        forgejo: {password: forgejo-test-password, password_hash: forgejo-test-hash}
+        nextcloud: {password: nextcloud-test-password, password_hash: nextcloud-test-hash}
+    vault_store:
+      guests: {preserved: test-identity}
+      applications:
+        private: {existing: {type: Opaque, stringData: {retained: test-value}}}
+  tasks:
+    - name: Bind only each client's declared mail account
+      ansible.builtin.include_tasks: ../roles/mail_credentials/tasks/clients.yml
+
+    - name: Require separate namespaces, passwords and unchanged unrelated data
+      ansible.builtin.assert:
+        that:
+          - vault_store.guests.preserved == 'test-identity'
+          - vault_store.applications.private.existing.stringData.retained == 'test-value'
+          - vault_store.applications.private['forgejo-smtp'].stringData.username == 'forgejo@example.test'
+          - vault_store.applications.private['forgejo-smtp'].stringData.password == 'forgejo-test-password'
+          - vault_store.applications.public['nextcloud-smtp'].stringData.password == 'nextcloud-test-password'
+          - "'forgejo-smtp' not in vault_store.applications.public"
+          - "'nextcloud-smtp' not in vault_store.applications.private"
+          - "'password_hash' not in (vault_store.applications | to_json)"
+
+    - name: Remember the bound store
+      ansible.builtin.set_fact:
+        mail_clients_before: "{{ vault_store }}"
+
+    - name: Bind the same clients again
+      ansible.builtin.include_tasks: ../roles/mail_credentials/tasks/clients.yml
+
+    - name: Require an identical store after repeated binding
+      ansible.builtin.assert:
+        that: vault_store == mail_clients_before

@@ -1,0 +1,54 @@
+- name: Mount the existing SSD and HD filesystems
+  ansible.posix.mount:
+    path: "{{ item.path }}"
+    src: "{{ item.src }}"
+    fstype: "{{ item.fstype }}"
+    opts: "{{ item.opts }}"
+    passno: "{{ item.passno }}"
+    state: mounted
+  loop: "{{ storage_mounts }}"
+
+- name: Allow QEMU to traverse the mounted filesystem roots
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    group: "{{ storage_group }}"
+    mode: "{{ storage_traverse_mode }}"
+  loop: "{{ storage_mounts }}"
+
+- name: Create libvirt volume directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ storage_owner }}"
+    group: "{{ storage_group }}"
+    mode: "{{ storage_directory_mode }}"
+  loop: "{{ storage_pools }}"
+
+- name: Create the vmctl directories for generated VM volume links
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ hypervisor_user }}"
+    group: "{{ hypervisor_user }}"
+    mode: "{{ vmctl_directory_mode }}"
+  loop: "{{ vmctl_storage_directories }}"
+
+- name: Define the storage pools
+  community.libvirt.virt_pool:
+    name: "{{ item.name }}"
+    xml: "{{ lookup('template', 'pool.xml.j2') }}"
+    state: present
+  loop: "{{ storage_pools }}"
+
+- name: Start the storage pools
+  community.libvirt.virt_pool:
+    name: "{{ item.name }}"
+    state: active
+  loop: "{{ storage_pools }}"
+
+- name: Enable storage pool autostart
+  community.libvirt.virt_pool:
+    name: "{{ item.name }}"
+    autostart: true
+  loop: "{{ storage_pools }}"

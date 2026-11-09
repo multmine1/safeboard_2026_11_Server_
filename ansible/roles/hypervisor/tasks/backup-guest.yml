@@ -1,0 +1,43 @@
+- name: Read the guest host key over its existing trusted SSH connection
+  ansible.builtin.command:
+    argv: [cat, "{{ hypervisor_backup.host_key_file }}"]
+  delegate_to: "{{ hypervisor_backup_guest.key }}"
+  become: false
+  vars:
+    ansible_user: "{{ hypervisor_backup_guest.value.user }}"
+    ansible_ssh_common_args: >-
+      {{ hostvars[hypervisor_backup_guest.key].ansible_ssh_common_args |
+         replace('StrictHostKeyChecking=accept-new', 'StrictHostKeyChecking=yes') }}
+    ansible_private_key: "{{ vault_store.guests[hypervisor_backup_guest.key].private_key }}"
+    ansible_private_key_passphrase: "{{ vault_store.guests[hypervisor_backup_guest.key].key_passphrase }}"
+  changed_when: false
+  check_mode: false
+  register: hypervisor_backup_guest_key
+  no_log: true
+
+- name: Pin the prepared numeric endpoint for the native host producer
+  ansible.builtin.known_hosts:
+    path: "{{ hypervisor_backup.known_hosts }}"
+    name: "{{ hypervisor_backup_guest.value.known_host }}"
+    key: "{{ hypervisor_backup_guest.value.known_host }} {{ hypervisor_backup_guest_key.stdout.split()[:2] | join(' ') }}"
+
+- name: Keep the host trust file private
+  ansible.builtin.file:
+    path: "{{ hypervisor_backup.known_hosts }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Select only this guest administrator's key and sudo input
+  vars:
+    hypervisor_backup_password_line: "{{ vault_store.guests[hypervisor_backup_guest.key].sudo_password }}\n"
+  ansible.builtin.set_fact:
+    hypervisor_backup_credentials: >-
+      {{ hypervisor_backup_credentials + [
+         {'name': 'guest-' ~ hypervisor_backup_guest.key,
+          'public_key': vault_store.guests[hypervisor_backup_guest.key].public_key,
+          'value': vault_store.guests[hypervisor_backup_guest.key].private_key |
+             ssh_runtime_key(vault_store.guests[hypervisor_backup_guest.key].key_passphrase)},
+         {'name': 'sudo-' ~ hypervisor_backup_guest.key,
+          'value': hypervisor_backup_password_line}] }}
+  no_log: true

@@ -1,0 +1,17 @@
+- name: Reload SSH
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+
+- name: Stop the current Cockpit listener
+  ansible.builtin.systemd_service:
+    name: "{{ hypervisor_cockpit.unit }}"
+    state: stopped
+  listen: Restart Cockpit socket
+
+- name: Restart the declared Cockpit socket
+  ansible.builtin.systemd_service:
+    name: "{{ hypervisor_cockpit.socket }}"
+    state: restarted
+    daemon_reload: true
+  listen: Restart Cockpit socket

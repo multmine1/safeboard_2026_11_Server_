@@ -1,0 +1,29 @@
+- name: Require exactly one declared recovery target
+  ansible.builtin.assert:
+    that: recovery_helm_history | selectattr('revision', 'equalto', recovery_revision | int) | list | length == 1
+
+- name: Select the existing release states without altering them
+  ansible.builtin.set_fact:
+    recovery_helm_target: "{{ recovery_helm_history | selectattr('revision', 'equalto', recovery_revision | int) | first }}"
+    recovery_helm_required: "{{ (recovery_helm_history | last).status.startswith('pending-') or (recovery_helm_history | last).status == 'failed' }}"
+    recovery_helm_owner_argv:
+      - "{{ cluster.settings.paths.binary }}"
+      - kubectl
+      - apply
+      - --namespace
+      - "{{ recovery_namespace }}"
+      - --server-side
+      - --field-manager=k0s
+      - --force-conflicts
+      - -f
+      - '-'
+
+- name: Require a completed, older target revision
+  ansible.builtin.assert:
+    that:
+      - recovery_helm_target.status in ['deployed', 'superseded']
+      - recovery_helm_target.revision < (recovery_helm_history | last).revision
+
+- name: Require the interrupted revision to match the reviewed plan
+  ansible.builtin.assert:
+    that: not recovery_helm_required or (recovery_helm_history | last).revision == recovery_expected_revision | int

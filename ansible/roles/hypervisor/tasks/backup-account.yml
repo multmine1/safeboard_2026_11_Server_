@@ -1,0 +1,55 @@
+- name: Read the declared service identity before claiming it
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ backup.repository_access.account.name }}"
+    fail_key: false
+  register: hypervisor_backup_identity
+
+- name: Read only its declared private group
+  ansible.builtin.getent:
+    database: group
+    key: "{{ backup.repository_access.group }}"
+    fail_key: false
+  register: hypervisor_backup_group_identity
+
+- name: Refuse unrelated existing identities before creating the service account
+  ansible.builtin.assert:
+    that: >-
+      (hypervisor_backup_user_entry is none and hypervisor_backup_group_entry is none) or
+      (hypervisor_backup_user_entry is not none and hypervisor_backup_group_entry is not none and
+       hypervisor_backup_user_entry[1] | int != 0 and
+       hypervisor_backup_user_entry[2] == hypervisor_backup_group_entry[1] and
+       hypervisor_backup_user_entry[4] == backup.repository_access.account.home and
+       hypervisor_backup_user_entry[5] == backup.repository_access.account.shell)
+  vars:
+    hypervisor_backup_user_entry: "{{ hypervisor_backup_identity.ansible_facts.getent_passwd[backup.repository_access.account.name] }}"
+    hypervisor_backup_group_entry: "{{ hypervisor_backup_group_identity.ansible_facts.getent_group[backup.repository_access.group] }}"
+
+- name: Create the backup service's private group
+  ansible.builtin.group:
+    name: "{{ backup.repository_access.group }}"
+    system: true
+  register: hypervisor_backup_group_created
+
+- name: Create the isolated noninteractive backup writer
+  block:
+    - name: Persist only the prepared service identity
+      ansible.builtin.user:
+        name: "{{ backup.repository_access.account.name }}"
+        group: "{{ backup.repository_access.group }}"
+        groups: ''
+        home: "{{ backup.repository_access.account.home }}"
+        shell: "{{ backup.repository_access.account.shell }}"
+        system: true
+        create_home: false
+        password_lock: true
+  rescue:
+    - name: Release only a group created by this failed operation
+      ansible.builtin.group:
+        name: "{{ backup.repository_access.group }}"
+        state: absent
+      when: hypervisor_backup_group_created.changed
+
+    - name: Stop after the native account operation failed
+      ansible.builtin.fail:
+        msg: The dedicated backup identity could not be created; no repository permissions were changed.

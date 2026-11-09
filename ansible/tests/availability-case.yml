@@ -1,0 +1,10 @@
+- name: Supply native domain facts for this test case
+  ansible.builtin.set_fact:
+    running_domains: {list_vms: "{{ runtime_case.running }}"}
+
+- name: Select guests through the production task
+  ansible.builtin.include_tasks: ../playbooks/stages/available-vms.yml
+
+- name: Require the intended managed paths to be selected
+  ansible.builtin.assert:
+    that: available_vms | sort == runtime_case.expected | sort

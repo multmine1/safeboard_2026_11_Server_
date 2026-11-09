@@ -1,0 +1,18 @@
+- name: Persist the prepared bootstrap network
+  ansible.builtin.copy:
+    content: "{{ guest_plan.bootstrap_netplan }}"
+    dest: "{{ guest_plan.network.network_path }}"
+    mode: "{{ guest_plan.network.file_modes[guest_plan.network.network_path] }}"
+  register: guest_bootstrap_network
+
+- name: Remove superseded cloud-init networking
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ guest_plan.network.remove_files }}"
+  register: guest_bootstrap_removed
+
+- name: Apply the corrected bootstrap DNS interface
+  ansible.builtin.command: netplan apply
+  when: guest_bootstrap_network.changed or guest_bootstrap_removed.changed
+  changed_when: guest_bootstrap_network.changed or guest_bootstrap_removed.changed

@@ -1,0 +1,14 @@
+{
+  "id": "51ca2996-3113-5182-84d3-56bc448f55a8",
+  "name": "app",
+  "type": "worker",
+  "vcpu": 2,
+  "ram_mib": 4096,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 32
+    }
+  ]
+}

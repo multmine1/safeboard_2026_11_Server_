@@ -1,0 +1,29 @@
+- name: Check our bootstrap SSH profile without connecting to a server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hypervisor_bootstrap_alias: bootstrap-test
+    profile_cases:
+      - {host_key_alias: '', expected_key_alias: 192.0.2.90}
+      - {host_key_alias: physical-host, expected_key_alias: physical-host}
+  tasks:
+    - name: Create an isolated controller profile directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ playbook_dir | dirname | dirname }}/environment/.tools"
+        prefix: network-profile-
+      register: profile_directory
+
+    - name: Exercise both trust naming cases
+      block:
+        - name: Check the profile transformation
+          ansible.builtin.include_tasks: network-profile-case.yml
+          loop: "{{ profile_cases }}"
+          loop_control:
+            loop_var: profile_case
+      always:
+        - name: Remove only the isolated test profiles
+          ansible.builtin.file:
+            path: "{{ profile_directory.path }}"
+            state: absent

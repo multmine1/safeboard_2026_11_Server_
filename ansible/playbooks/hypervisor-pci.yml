@@ -1,0 +1,11 @@
+- name: Verify the declared physical PCI passthrough boundary
+  hosts: hypervisors
+  become: false
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+  tasks:
+    - name: Check the prepared PCI observations without changing the host
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: pci

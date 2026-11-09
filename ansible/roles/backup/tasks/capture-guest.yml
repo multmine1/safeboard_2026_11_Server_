@@ -1,0 +1,89 @@
+- name: Apply the existing guest identity to this native operation
+  delegate_to: "{{ backup_capture.vm }}"
+  become: true
+  vars:
+    ansible_user: "{{ hostvars[hostvars['localhost'].backup_capture.vm].access.admin_user }}"
+    ansible_become_exe: sudo
+    ansible_private_key: "{{ hostvars['localhost'].backup_capture_credentials.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].backup_capture_credentials.key_passphrase }}"
+    ansible_become_password: "{{ hostvars['localhost'].backup_capture_credentials.sudo_password }}"
+  block:
+    - name: Resolve the existing guest staging root before writing
+      ansible.builtin.command:
+        argv: [realpath, --canonicalize-existing, "{{ backup.capture.guest_directory }}"]
+      register: backup_guest_staging_location
+      changed_when: false
+
+    - name: Reject a guest staging root redirected by a symbolic link
+      ansible.builtin.assert:
+        that: backup_guest_staging_location.stdout == backup.capture.guest_directory
+
+    - name: Create an isolated private guest capture directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ backup.capture.guest_directory }}"
+      register: backup_remote_capture
+
+    - name: Read current guest staging capacity
+      ansible.builtin.command:
+        argv: [df, --block-size=1, --output=avail, "{{ backup_remote_capture.path }}"]
+      register: backup_guest_space
+      changed_when: false
+
+    - name: Require the prepared guest staging budget
+      ansible.builtin.assert:
+        that: backup_guest_space.stdout_lines[-1] | int >= backup_capture.guest_required_free_bytes
+
+    - name: Read current host staging capacity
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - import shutil, sys; print(shutil.disk_usage(sys.argv[1]).free)
+          - "{{ backup_local_capture.path }}"
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: backup_local_space
+      changed_when: false
+
+    - name: Require the prepared host staging budget
+      ansible.builtin.assert:
+        that: backup_local_space.stdout_lines[-1] | int >= backup_capture.local_required_free_bytes
+
+    - name: Create a private output file before redirecting native stdout
+      ansible.builtin.file:
+        path: "{{ backup_remote_capture.path }}/{{ backup_capture.filename }}"
+        state: touch
+        mode: "{{ vault_file_mode }}"
+
+    - name: Produce a size bounded native archive without returning its data to Ansible
+      ansible.builtin.shell:
+        cmd: "{{ backup_capture.argv | map('quote') | join(' ') }} > {{ (backup_remote_capture.path ~ '/' ~ backup_capture.filename) | quote }}"
+      environment:
+        TMPDIR: "{{ backup_remote_capture.path }}"
+      changed_when: true
+      no_log: true
+
+    - name: Require a complete nonempty output file within the generated limit
+      ansible.builtin.stat:
+        path: "{{ backup_remote_capture.path }}/{{ backup_capture.filename }}"
+        get_checksum: false
+      register: backup_capture_file
+
+    - name: Reject an empty or oversized native capture
+      ansible.builtin.assert:
+        that:
+          - backup_capture_file.stat.isreg
+          - backup_capture_file.stat.size > 0
+          - backup_capture_file.stat.size <= backup_capture.max_size_bytes
+
+    - name: Permit the existing guest administrator to transfer only this temporary capture
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        owner: "{{ hostvars[hostvars['localhost'].backup_capture.vm].access.admin_user }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: "{{ backup_remote_capture.path }}/{{ backup_capture.filename }}", mode: "{{ vault_file_mode }}"}
+        - {path: "{{ backup_remote_capture.path }}", mode: "{{ vault_directory_mode }}"}

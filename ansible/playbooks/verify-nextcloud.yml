@@ -1,0 +1,90 @@
+- name: Read the deployed Nextcloud configuration and cron evidence
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/deployment.json
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/applied.json
+    - ../../configs/generated/k0s/applications/nextcloud/verification.json
+  tasks:
+    - name: Read the prepared cluster and application plans
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../configs/generated/k0s/{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: cluster.json, name: cluster}
+        - {file: applications/deployment.json, name: application_deployment}
+
+    - name: Select Nextcloud from the prepared deployment
+      ansible.builtin.set_fact:
+        application: "{{ application_deployment.applications.nextcloud }}"
+
+    - name: Read current guest and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+    - name: Require the controller and both sides of the HTTPS path to be running
+      ansible.builtin.assert:
+        that:
+          - application_deployment.applications[item].enabled
+          - cluster.controller in available_vms
+          - application_deployment.applications[item].required_vms | difference(available_vms) | length == 0
+      loop: "{{ nextcloud_verification.applications }}"
+
+    - name: Read only the controller administrator from the shared Vault
+      ansible.builtin.set_fact:
+        control_secrets: "{{ vault_store.guests[cluster.controller] }}"
+      no_log: true
+
+    - name: Inspect Nextcloud through the existing control plane
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].control_secrets.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].control_secrets.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].control_secrets.sudo_password }}"
+        nextcloud_resource: "{{ (application.readiness | selectattr('rollout', 'defined') | first).resource }}"
+      block:
+        - name: Read the native Nextcloud observations
+          ansible.builtin.command:
+            argv: >-
+              {{ [cluster.settings.paths.binary, 'kubectl', 'exec', '--namespace', application.namespace,
+                  nextcloud_resource, '--'] + item.value }}
+          loop: "{{ nextcloud_verification.commands | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          register: nextcloud_commands
+          changed_when: false
+          check_mode: false
+
+        - name: Index the observed command outputs
+          ansible.builtin.set_fact:
+            nextcloud_observations: >-
+              {{ dict(nextcloud_commands.results | map(attribute='item.key') |
+                      zip(nextcloud_commands.results | map(attribute='stdout'))) }}
+
+        - name: Read the scheduled job's latest successful completion
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, get,
+                   "{{ nextcloud_verification.cron_resource }}", --namespace, "{{ application.namespace }}", -o, json]
+          register: nextcloud_cron_result
+          changed_when: false
+          check_mode: false
+
+        - name: Decode the native CronJob status
+          ansible.builtin.set_fact:
+            nextcloud_cron: "{{ nextcloud_cron_result.stdout | from_json }}"
+
+        - name: Verify the observed application configuration
+          ansible.builtin.include_tasks: stages/nextcloud-assert.yml
+
+        - name: Report the observed version and cron completion
+          ansible.builtin.debug:
+            msg:
+              version: "{{ (nextcloud_observations.status | from_json).versionstring }}"
+              cron_last_success: "{{ nextcloud_cron.status.lastSuccessfulTime }}"
+              cron_age_seconds: "{{ nextcloud_observations.clock | int - nextcloud_observations.cron_time | int }}"
+              trusted_proxy_sources: "{{ nextcloud_verification.proxy_clients | length }}"

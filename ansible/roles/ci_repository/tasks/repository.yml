@@ -1,0 +1,55 @@
+- name: Read the selected repository
+  ansible.builtin.uri:
+    url: "{{ ci_repository_api }}"
+    headers: "{{ ci_repository_headers }}"
+    ca_path: "{{ ci_repository_ca.path }}"
+    status_code: [200, 404]
+  register: ci_repository_existing
+  no_log: true
+
+- name: Inspect the retained local checkpoint before recreating its remote
+  ansible.builtin.stat:
+    path: "{{ ci_repository_checkout }}/.git"
+  delegate_to: localhost
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: ci_repository_existing.status == 404
+  register: ci_repository_local_checkout
+
+- name: Create only the missing private repository
+  ansible.builtin.uri:
+    url: "{{ ci_repository_origin }}/api/v1/user/repos"
+    method: POST
+    headers: "{{ ci_repository_headers }}"
+    ca_path: "{{ ci_repository_ca.path }}"
+    body_format: json
+    body: >-
+      {{ ci_project.repository | combine({'auto_init':
+           ci_project.repository.auto_init and not ci_repository_local_checkout.stat.exists}) }}
+    status_code: 201
+  when: ci_repository_existing.status == 404
+  register: ci_repository_created
+  changed_when: true
+  no_log: true
+
+- name: Select its native clone and owner metadata
+  ansible.builtin.set_fact:
+    ci_repository_metadata: "{{ ci_repository_created.json if ci_repository_existing.status == 404 else ci_repository_existing.json }}"
+  no_log: true
+
+- name: Require the selected repository to remain private
+  ansible.builtin.assert:
+    that: ci_repository_metadata.private
+  no_log: true
+
+- name: Enable native Actions only for this private repository
+  ansible.builtin.uri:
+    url: "{{ ci_repository_api }}"
+    method: PATCH
+    headers: "{{ ci_repository_headers }}"
+    ca_path: "{{ ci_repository_ca.path }}"
+    body_format: json
+    body: {has_actions: true}
+  when: not ci_repository_metadata.has_actions
+  changed_when: true
+  no_log: true

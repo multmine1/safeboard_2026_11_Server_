@@ -1,0 +1,99 @@
+- name: Check host cleanup from the controller using only disposable resources
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/reset.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_become_exe: "{{ controller.become_exe }}"
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+    reset_test_policies: [remove, preserve]
+    reset_test_guests:
+      - 11111111-1111-4111-8111-111111111111
+      - '[22222222-2222-4222-8222-222222222222]:2222'
+    reset_test_kept_trust: "fixture-hypervisor {{ reset_test_identity.public_key }}\n"
+    reset_test_trust: >-
+      {{ reset_test_kept_trust +
+         reset_test_guests[0] + ' ' + reset_test_identity.public_key + '\n' +
+         reset_test_guests[1] + ' ' + reset_test_identity.public_key + '\n' }}
+  tasks:
+    - name: Retain only the prepared fixture context and a unique resource suffix
+      ansible.builtin.set_fact:
+        reset_test_source: "{{ reset }}"
+        reset_test_suffix: "{{ lookup('ansible.builtin.password', '/dev/null', length=10, chars=['ascii_lowercase', 'digits']) }}"
+
+    - name: Create an isolated host fixture directory as the existing administrator
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: reset-host-test-
+      delegate_to: "{{ controller.admin_alias }}"
+      vars:
+        ansible_python_interpreter: "{{ controller.python }}"
+      register: reset_test_host
+
+    - name: Create an isolated local fixture directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ playbook_dir }}/../../environment/.tools"
+        prefix: reset-controller-test-
+      register: reset_test_local
+
+    - name: Verify both cleanup policies without changing production infrastructure
+      block:
+        - name: Generate only a disposable fixture public identity
+          community.crypto.openssh_keypair:
+            path: "{{ reset_test_local.path }}/identity"
+            type: ed25519
+          register: reset_test_identity
+          no_log: true
+
+        - name: Read the host pools before creating any fixture pool
+          ansible.builtin.command:
+            argv: [virsh, -c, "{{ reset_test_source.libvirt_uri }}", pool-list, --all, --name]
+          delegate_to: "{{ controller.admin_alias }}"
+          become: true
+          vars:
+            ansible_python_interpreter: "{{ controller.python }}"
+          register: reset_test_original_pools
+          changed_when: false
+
+        - name: Exercise remove and preserve with the same production cleanup stages
+          ansible.builtin.include_tasks: reset-host-case.yml
+          loop: "{{ reset_test_policies }}"
+          loop_control:
+            loop_var: reset_test_policy
+
+        - name: Reject a real redirected repository before any permission changes
+          ansible.builtin.import_tasks: reset-backup-boundary.yml
+
+        - name: Read the host pools after removing all fixture pools
+          ansible.builtin.command:
+            argv: [virsh, -c, "{{ reset_test_source.libvirt_uri }}", pool-list, --all, --name]
+          delegate_to: "{{ controller.admin_alias }}"
+          become: true
+          vars:
+            ansible_python_interpreter: "{{ controller.python }}"
+          register: reset_test_final_pools
+          changed_when: false
+
+        - name: Require every original pool to remain unchanged
+          ansible.builtin.assert:
+            that: reset_test_final_pools.stdout_lines | sort == reset_test_original_pools.stdout_lines | sort
+
+      always:
+        - name: Remove only the fixture host directory
+          ansible.builtin.file:
+            path: "{{ reset_test_host.path }}"
+            state: absent
+          delegate_to: "{{ controller.admin_alias }}"
+          become: true
+          vars:
+            ansible_python_interpreter: "{{ controller.python }}"
+
+        - name: Remove only the fixture local directory and identity
+          ansible.builtin.file:
+            path: "{{ reset_test_local.path }}"
+            state: absent

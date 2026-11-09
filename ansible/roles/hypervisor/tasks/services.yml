@@ -1,0 +1,6 @@
+- name: Enable and start the declared foundation services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: "{{ hypervisor_units | list }}"

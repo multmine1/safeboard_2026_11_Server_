@@ -1,0 +1,6 @@
+- name: Remove only declared guest identities from the local controller trust file
+  ansible.builtin.known_hosts:
+    path: "{{ reset.controller_known_hosts }}"
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ reset.known_host_aliases }}"

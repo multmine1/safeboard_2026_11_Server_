@@ -1,0 +1,44 @@
+- name: Validate the monitoring rules in the isolated native engine
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../k0s/requirements/validation.json
+  vars:
+    project_root: "{{ playbook_dir | dirname | dirname }}"
+    validation_artifact: "{{ vmalert_tool.platforms[ansible_facts.system] }}"
+    validation_directory: "{{ project_root }}/{{ vmalert_tool.cache_directory }}/{{ ansible_facts.system }}"
+  tasks:
+    - name: Select the controller platform
+      ansible.builtin.setup:
+        gather_subset: ['!all', platform]
+
+    - name: Create the declared native validation cache
+      ansible.builtin.file:
+        path: "{{ validation_directory }}"
+        state: directory
+        mode: "{{ vmalert_tool.directory_mode }}"
+
+    - name: Download the native validator matching the pinned vmalert
+      ansible.builtin.get_url:
+        url: "{{ validation_artifact.url }}"
+        checksum: "{{ validation_artifact.checksum }}"
+        dest: "{{ validation_directory }}/{{ validation_artifact.archive_name }}"
+        mode: "{{ vmalert_tool.file_mode }}"
+
+    - name: Extract only the native monitoring validator
+      # unarchive requires GNU tar; the existing BSD tar handles this archive on Mac.
+      ansible.builtin.command: # noqa command-instead-of-module
+        argv: [tar, -xf, "{{ validation_artifact.archive_name }}", "{{ vmalert_tool.archive_binary }}"]
+        chdir: "{{ validation_directory }}"
+        creates: "{{ validation_directory }}/{{ vmalert_tool.archive_binary }}"
+
+    - name: Check alert firing resolution and missing data with synthetic series
+      ansible.builtin.command:
+        argv:
+          - "{{ validation_directory }}/{{ vmalert_tool.archive_binary }}"
+          - unittest
+          - -files
+          - "{{ project_root }}/{{ vmalert_tool.unittest_file }}"
+        chdir: "{{ validation_directory }}"
+      changed_when: false

@@ -1,0 +1,230 @@
+{
+  "name": "portfolio",
+  "vm": "344e9460-48bf-5abb-9745-132485ce8c16",
+  "enabled": true,
+  "component": "forgejo",
+  "depends_on": [
+    "sealed-secrets",
+    "postgres-public",
+    "nfs-public"
+  ],
+  "required_secrets": [
+    "portfolio-admin",
+    "portfolio-tls",
+    "postgres-public-app",
+    "postgres-public-ca"
+  ],
+  "endpoints": {
+    "web": {
+      "connection": "portfolio",
+      "scheme": "https",
+      "path": "/"
+    }
+  },
+  "chart": {
+    "values": {
+      "persistence": {
+        "claimName": "portfolio-files"
+      },
+      "extraVolumes": [
+        {
+          "name": "postgres-ca",
+          "secret": {
+            "secretName": "postgres-public-ca"
+          }
+        },
+        {
+          "name": "web-tls",
+          "secret": {
+            "secretName": "portfolio-tls"
+          }
+        }
+      ],
+      "gitea": {
+        "admin": {
+          "existingSecret": "portfolio-admin"
+        },
+        "config": {
+          "database": {
+            "NAME": "portfolio"
+          },
+          "packages": {
+            "ENABLED": false
+          },
+          "actions": {
+            "ENABLED": false
+          }
+        },
+        "additionalConfigFromEnvs": [
+          {
+            "name": "FORGEJO__database__USER",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "postgres-public-app",
+                "key": "username"
+              }
+            }
+          },
+          {
+            "name": "FORGEJO__database__PASSWD",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "postgres-public-app",
+                "key": "password"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "portfolio-files"
+      },
+      "spec": {
+        "storageClassName": "",
+        "volumeName": "portfolio-files",
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "64Gi"
+          }
+        }
+      }
+    }
+  ],
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "portfolio-files"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "64Gi"
+        },
+        "volumeMode": "Filesystem",
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "portfolio-files",
+          "namespace": ""
+        },
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "nfs": {},
+        "mountOptions": [
+          "nfsvers=4.2"
+        ]
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/name",
+      "path": "/chart/values/fullnameOverride"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/deployment/labels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/gitea/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/service/http/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/portfolio-backend/port",
+      "path": "/chart/values/service/http/port"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/portfolio-backend/port",
+      "path": "/chart/values/gitea/config/server/HTTP_PORT"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/web",
+      "path": "/chart/values/gitea/config/server/ROOT_URL"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs/public-data/portfolio/volume",
+      "path": "/cluster_resources/0/spec/nfs"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs/public-data/portfolio/port_option",
+      "path": "/cluster_resources/0/spec/mountOptions/1"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/public-sql/dns_socket",
+      "path": "/chart/values/gitea/config/database/HOST"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/portfolio",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "secrets": {
+    "portfolio-admin": {
+      "provider": "vault"
+    },
+    "portfolio-tls": {
+      "provider": "certificate",
+      "services": [
+        "portfolio-backend"
+      ]
+    }
+  }
+}

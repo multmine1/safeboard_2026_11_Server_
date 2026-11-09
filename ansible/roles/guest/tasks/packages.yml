@@ -1,0 +1,23 @@
+- name: Apply the prepared package manager configuration
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ item.key }}"
+    mode: "{{ guest_plan.file_mode }}"
+  loop: "{{ guest_plan.package_files | default({}) | dict2items }}"
+
+- name: Install the prepared package list
+  ansible.builtin.apt:
+    name: "{{ guest_plan.packages }}"
+    update_cache: true
+
+- name: Hold the installed managed packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item.split('=')[0] }}"
+    selection: hold
+  loop: "{{ guest_plan.packages }}"
+
+- name: Install the declared release binaries
+  ansible.builtin.include_tasks: binary.yml
+  loop: "{{ guest_plan.binaries | default([]) }}"
+  loop_control:
+    loop_var: binary

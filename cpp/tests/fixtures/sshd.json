@@ -1,0 +1,43 @@
+{
+  "path": "/etc/ssh/sshd_config.d/00-hard.conf",
+  "obsolete_paths": [
+    "/etc/ssh/sshd_config.d/60-vmctl.conf"
+  ],
+  "file_mode": "0644",
+  "owner": "root",
+  "group": "root",
+  "global_options": {
+    "PermitRootLogin": "no",
+    "AuthenticationMethods": "publickey",
+    "DisableForwarding": "yes",
+    "PermitTTY": "yes",
+    "MaxSessions": "10"
+  },
+  "accounts": {
+    "controller": {
+      "options": {
+        "DisableForwarding": "no",
+        "AllowTcpForwarding": "local"
+      },
+      "forward_targets": [
+        "127.0.0.1:8888"
+      ],
+      "service_forwards": false
+    },
+    "libvirt": {
+      "options": {
+        "DisableForwarding": "no",
+        "AllowTcpForwarding": "local"
+      },
+      "forward_targets": [],
+      "service_forwards": true
+    }
+  },
+  "host_keys": [
+    "/etc/ssh/ssh_host_ed25519_key"
+  ],
+  "backup": {
+    "private_file_mode": "0600",
+    "public_file_mode": "0644"
+  }
+}

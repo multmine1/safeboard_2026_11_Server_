@@ -1,0 +1,23 @@
+{
+  "id": "388b59ce-4143-5a32-91a3-689388bc1384",
+  "name": "ci",
+  "type": "ci",
+  "vcpu": 4,
+  "ram_mib": 8192,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 32
+    },
+    {
+      "name": "cache",
+      "storage": "nvme",
+      "size_gib": 64
+    }
+  ],
+  "domain": {
+    "running": false,
+    "autostart": false
+  }
+}

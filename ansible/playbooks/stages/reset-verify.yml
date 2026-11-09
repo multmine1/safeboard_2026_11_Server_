@@ -1,0 +1,72 @@
+- name: Inspect the canonical controller and state again after cleanup
+  ansible.builtin.import_tasks: reset-controller.yml
+
+- name: Require the canonical state to have no remaining resources
+  ansible.builtin.assert:
+    that: reset_state_addresses | length == 0
+
+- name: Validate the actual empty state and refresh only private diagnostic snapshots
+  ansible.builtin.import_tasks: reset-inspect.yml
+
+- name: Verify the resulting physical host without querying the controller OS
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the final physical bridge routes
+      ansible.builtin.command:
+        argv: [ip, -json, -4, route, show, dev, "{{ reset.network.bridge }}"]
+      register: reset_final_routes
+      changed_when: false
+
+    - name: Require every declared VM route to have been removed
+      ansible.builtin.assert:
+        that: >-
+          reset_final_routes.stdout | from_json | selectattr('dst', 'equalto', item.to) | list | length == 0
+      loop: "{{ reset.vm_routes }}"
+
+    - name: Read the applied physical DNS servers from NetworkManager
+      ansible.builtin.command:
+        argv: [nmcli, --get-values, IP4.DNS, device, show, "{{ reset.network.bridge }}"]
+      register: reset_physical_dns
+      changed_when: false
+
+    - name: Require the physical gateway and DNS to be independent of the removed routers
+      ansible.builtin.assert:
+        that:
+          - >-
+            reset_final_routes.stdout | from_json | selectattr('gateway', 'defined') |
+            selectattr('dst', 'equalto', 'default') | selectattr('gateway', 'equalto', reset.network.gateway) | list | length > 0
+          - >-
+            reset_physical_dns.stdout_lines | sort ==
+            reset.bootstrap_netplan.network.bridges[reset.network.bridge].nameservers.addresses | sort
+
+    - name: Inspect the reviewed host paths after cleanup
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      become: true
+      loop: "{{ reset.remove_files + reset.remove_links + reset.volume_directories + reset.remove_directories + [reset.account.home] }}"
+      register: reset_removed_paths
+
+    - name: Require all reviewed host paths and the disposable account to be absent
+      ansible.builtin.assert:
+        that:
+          - reset_removed_paths.results | selectattr('stat.exists') | list | length == 0
+          - reset_removable_account.ansible_facts.getent_passwd[reset.account.name] is none
+          - reset_pools.stdout_lines | intersect(reset.platform_pools | map(attribute='name') | list) | length == 0
+
+    - name: Read only the final declared service account and private group identities
+      ansible.builtin.getent:
+        database: "{{ item.0 }}"
+        key: "{{ item.1.name }}"
+        fail_key: false
+      loop: "{{ ['passwd', 'group'] | product(reset.service_accounts | default([])) | list }}"
+      register: reset_final_service_identities
+
+    - name: Require each reviewed service identity and its private group to be absent
+      ansible.builtin.assert:
+        that: item.ansible_facts['getent_' ~ item.item.0][item.item.1.name] is none
+      loop: "{{ reset_final_service_identities.results }}"
+      loop_control:
+        label: "{{ item.item.0 }}/{{ item.item.1.name }}"

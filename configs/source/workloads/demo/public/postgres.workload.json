@@ -1,0 +1,180 @@
+{
+  "name": "postgres-public",
+  "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+  "enabled": true,
+  "depends_on": [
+    "cnpg",
+    "local-path"
+  ],
+  "resources": [
+    {
+      "apiVersion": "postgresql.cnpg.io/v1",
+      "kind": "Cluster",
+      "metadata": {
+        "name": "postgres-public"
+      },
+      "spec": {
+        "enableSuperuserAccess": false,
+        "storage": {
+          "size": "32Gi",
+          "storageClass": "local-fast",
+          "resizeInUseVolumes": false
+        },
+        "affinity": {
+          "nodeSelector": {}
+        },
+        "inheritedMetadata": {
+          "labels": {},
+          "annotations": {}
+        },
+        "bootstrap": {
+          "initdb": {
+            "database": "portfolio",
+            "owner": "portfolio"
+          }
+        },
+        "managed": {
+          "services": {
+            "additional": [
+              {
+                "selectorType": "rw",
+                "serviceTemplate": {
+                  "metadata": {
+                    "name": "postgres-public-vm"
+                  },
+                  "spec": {
+                    "type": "ClusterIP",
+                    "externalIPs": [],
+                    "externalTrafficPolicy": "Local",
+                    "ports": [
+                      {
+                        "name": "postgresql",
+                        "port": 5432,
+                        "targetPort": 5432,
+                        "protocol": "TCP"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "roles": [
+            {
+              "name": "registry",
+              "login": true,
+              "passwordSecret": {
+                "name": "registry-postgres"
+              }
+            },
+            {
+              "name": "nextcloud",
+              "login": true,
+              "passwordSecret": {
+                "name": "nextcloud-postgres"
+              }
+            },
+            {
+              "name": "stalwart",
+              "login": true,
+              "passwordSecret": {
+                "name": "stalwart-postgres"
+              }
+            }
+          ]
+        },
+        "certificates": {
+          "serverAltDNSNames": []
+        }
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/resources/0/spec/affinity/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/resources/0/spec/inheritedMetadata/labels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/resources/0/spec/inheritedMetadata/annotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/resources/0/spec/managed/services/additional/0/serviceTemplate/spec/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/component/image",
+      "path": "/resources/0/spec/imageName"
+    },
+    {
+      "op": "copy",
+      "from": "/context/fqdn",
+      "path": "/resources/0/spec/certificates/serverAltDNSNames/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/public-sql/fqdn",
+      "path": "/resources/0/spec/certificates/serverAltDNSNames/1"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/resources/0/spec/instances"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/resources/0/spec/resources"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "cluster.postgresql.cnpg.io/postgres-public",
+      "revision_path": "{.spec.inheritedMetadata.annotations.skeleton\\.config-hash}",
+      "wait_for": "condition=Ready"
+    }
+  ],
+  "component": "postgresql",
+  "required_secrets": [
+    "registry-postgres",
+    "nextcloud-postgres",
+    "stalwart-postgres"
+  ],
+  "secrets": {
+    "registry-postgres": {
+      "provider": "vault"
+    },
+    "nextcloud-postgres": {
+      "provider": "vault"
+    },
+    "stalwart-postgres": {
+      "provider": "vault"
+    }
+  },
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 100,
+            "ram_mib": 1024
+          },
+          "limits": {
+            "cpu_millicores": 1000,
+            "ram_mib": 1024
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

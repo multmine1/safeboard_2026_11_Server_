@@ -1,0 +1,6 @@
+{% set prepared = namespace(accounts={}) %}
+{% for account_id, account in mail_credentials_plan.accounts['value'].items() %}
+{% set credentials = {'0': {'@type': 'Password', 'secret': mail_credentials_store.accounts[account.name].password_hash}} %}
+{% set prepared.accounts = prepared.accounts | combine({account_id: account | combine({'credentials': credentials})}) %}
+{% endfor %}
+{{ mail_credentials_plan.accounts | combine({'value': prepared.accounts}) | to_json }}

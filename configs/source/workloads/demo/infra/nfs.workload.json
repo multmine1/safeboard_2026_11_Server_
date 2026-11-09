@@ -1,0 +1,59 @@
+{
+  "name": "nfs-infra",
+  "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+  "enabled": true,
+  "storage": {
+    "nfs_exports": [
+      {
+        "service": "infra-data",
+        "mount": "data",
+        "directory": "forgejo",
+        "clients": [
+          "d7a7b3c1-f8ed-5fbf-8636-3f2dbe866561"
+        ],
+        "options": "rw,sync,root_squash,no_subtree_check",
+        "owner": "1000",
+        "group": "1000",
+        "mode": "2770",
+        "name": "forgejo"
+      }
+    ]
+  },
+  "guest": {
+    "directories": [
+      {
+        "path": "/etc/nfs.conf.d",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755"
+      },
+      {
+        "path": "/etc/exports.d",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755"
+      }
+    ],
+    "nfs": {
+      "exports_path": "/etc/exports.d/skeleton.exports",
+      "file_mode": "0644"
+    },
+    "files": [
+      {
+        "path": "/etc/nfs.conf.d/skeleton.conf",
+        "mode": "0644",
+        "content": "[nfsd]\nvers3=n\nvers4=y\nudp=n\ntcp=y\n"
+      }
+    ],
+    "services": [
+      "nfs-server"
+    ]
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs_exports",
+      "path": "/guest/nfs_exports"
+    }
+  ]
+}

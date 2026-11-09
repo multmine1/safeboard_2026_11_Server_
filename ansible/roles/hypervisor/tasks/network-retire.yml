@@ -1,0 +1,36 @@
+- name: Find declared superseded network configurations
+  ansible.builtin.find:
+    paths: "{{ hypervisor_network.path | dirname }}"
+    patterns: "{{ hypervisor_network.retired_configurations }}"
+  register: hypervisor_retired_configurations
+  when: hypervisor_network.retired_configurations | length > 0
+
+- name: Keep the active Netplan file outside the removal set
+  ansible.builtin.assert:
+    that: >-
+      hypervisor_network.path not in
+      (hypervisor_retired_configurations.files | default([]) | map(attribute='path') | list)
+    fail_msg: The declared superseded files include the active Netplan configuration.
+
+- name: Create the original network configuration backup directory
+  ansible.builtin.file:
+    path: "{{ hypervisor_network.backup_directory }}"
+    state: directory
+    mode: "{{ hypervisor_network.backup_directory_mode }}"
+  when: hypervisor_retired_configurations.matched | default(0) > 0
+
+- name: Preserve the superseded configurations before removing them from Netplan
+  ansible.builtin.copy:
+    remote_src: true
+    src: "{{ item.path }}"
+    dest: "{{ hypervisor_network.backup_directory }}/{{ item.path | basename }}"
+    mode: "{{ hypervisor_network.mode }}"
+    force: false
+  loop: "{{ hypervisor_retired_configurations.files | default([]) }}"
+
+- name: Retire the declared superseded network configurations
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ hypervisor_retired_configurations.files | default([]) }}"
+  register: hypervisor_retired_network

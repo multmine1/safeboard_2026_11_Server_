@@ -1,0 +1,21 @@
+- name: Stop only declared services on the physical hypervisor
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the declared native service and socket units
+      ansible.builtin.command:
+        argv: "{{ ['systemctl', 'list-unit-files', '--output=json'] + reset.stop_services }}"
+      register: reset_service_units
+      changed_when: false
+      check_mode: false
+      when: reset.stop_services | length > 0
+
+    - name: Stop and disable the declared project host services
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      become: true
+      loop: "{{ reset.stop_services }}"
+      when: item in (reset_service_units.stdout | default('[]') | from_json | map(attribute='unit_file') | list)

@@ -1,0 +1,24 @@
+- name: Authorize the controller's declared human keys
+  ansible.posix.authorized_key:
+    user: "{{ item.user }}"
+    key: "{{ item['keys'] | join('\n') }}"
+    exclusive: true
+  loop: "{{ sshd.authorized_keys }}"
+
+- name: Install the prepared global and account SSH policy
+  ansible.builtin.copy:
+    content: "{{ sshd.content }}"
+    dest: "{{ sshd.path }}"
+    owner: "{{ sshd.owner }}"
+    group: "{{ sshd.group }}"
+    mode: "{{ sshd.file_mode }}"
+    backup: true
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload SSH
+
+- name: Remove the superseded SSH policy fragments
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ sshd.obsolete_paths }}"
+  notify: Reload SSH

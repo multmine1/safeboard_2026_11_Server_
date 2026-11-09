@@ -1,0 +1,27 @@
+- name: Require the backend and its HTTPS frontend to be ready
+  ansible.builtin.assert:
+    that:
+      - item.installed
+      - not item.maintenance
+      - not item.needsDbUpgrade
+  loop:
+    - "{{ nextcloud_observations.status | from_json }}"
+    - "{{ nextcloud_observations.self_http | from_json }}"
+
+- name: Require exactly the generated proxy clients and canonical URL
+  ansible.builtin.assert:
+    that:
+      - nextcloud_verification.proxy_clients | length > 0
+      - nextcloud_observations.proxies | from_json | sort == nextcloud_verification.proxy_clients | sort
+      - nextcloud_observations.canonical_url | trim == nextcloud_verification.canonical_url
+      - nextcloud_observations.apache_remoteip is not regex('(?m)^\s*RemoteIP(Header|InternalProxy|TrustedProxy)\s')
+
+- name: Require a successful scheduled job and a recent Nextcloud cron run
+  ansible.builtin.assert:
+    that:
+      - not nextcloud_cron.spec.suspend | default(false)
+      - nextcloud_cron.status.lastSuccessfulTime is defined
+      - nextcloud_observations.cron_mode | trim == 'cron'
+      - nextcloud_observations.cron_time | int > 0
+      - nextcloud_observations.clock | int >= nextcloud_observations.cron_time | int
+      - (nextcloud_observations.clock | int - nextcloud_observations.cron_time | int) <= nextcloud_verification.max_cron_age_seconds

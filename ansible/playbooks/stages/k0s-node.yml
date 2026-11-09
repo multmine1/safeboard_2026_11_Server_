@@ -1,0 +1,121 @@
+- name: Read the prepared installation plan
+  ansible.builtin.include_vars:
+    file: "{{ generated }}/k0s/nodes/{{ node_id }}.json"
+    name: node
+
+- name: Read this node's encrypted administrator
+  ansible.builtin.set_fact:
+    node_secrets: "{{ {'guest_admin': vault_store.guests[node_id]} }}"
+  no_log: true
+
+- name: Install this node through its generated network path
+  delegate_to: "{{ node.id }}"
+  become: true
+  vars:
+    ansible_user: "{{ hostvars[hostvars['localhost'].node.id].access.admin_user }}"
+    ansible_private_key: "{{ hostvars['localhost'].node_secrets.guest_admin.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].node_secrets.guest_admin.key_passphrase }}"
+    ansible_become_password: "{{ hostvars['localhost'].node_secrets.guest_admin.sudo_password }}"
+  block:
+    - name: Create the prepared installation directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "{{ cluster.settings.deployment.directory_mode }}"
+      loop: "{{ node.directories }}"
+
+    - name: Install the pinned k0s binary
+      ansible.builtin.get_url:
+        url: "{{ cluster.settings.binary.url }}"
+        checksum: "{{ cluster.settings.binary.checksum }}"
+        dest: "{{ cluster.settings.paths.binary }}"
+        mode: "{{ cluster.settings.deployment.binary_mode }}"
+      register: node_binary
+
+    - name: Install the controller configuration
+      ansible.builtin.copy:
+        src: "{{ generated }}/k0s/configuration.json"
+        dest: "{{ cluster.settings.paths.config }}"
+        mode: "{{ cluster.settings.deployment.file_mode }}"
+        backup: true
+        validate: "{{ cluster.settings.paths.binary | quote }} config validate --config %s"
+      when: node.role == 'controller'
+      register: node_configuration
+
+    - name: Read the existing native service and installation record
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: ["{{ node.unit_path }}", "{{ node.record_path }}"]
+      register: node_installation_files
+
+    - name: Read the previously applied installation arguments
+      ansible.builtin.slurp:
+        src: "{{ node.record_path }}"
+      when: node_installation_files.results[1].stat.exists
+      register: node_previous_installation
+
+    - name: Determine whether the service definition needs updating
+      ansible.builtin.set_fact:
+        node_install_needed: >-
+          {{ not node_installation_files.results[0].stat.exists or
+             not node_installation_files.results[1].stat.exists or
+             (node_previous_installation.content | b64decode | from_json) != node.install_argv }}
+
+    - name: Create a short-lived worker join token on the controller
+      ansible.builtin.command:
+        argv: ["{{ cluster.settings.paths.binary }}", token, create, --role, worker,
+               --expiry, "{{ cluster.settings.deployment.token_expiry }}"]
+      delegate_to: "{{ cluster.controller }}"
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].control_secrets.guest_admin.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].control_secrets.guest_admin.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].control_secrets.guest_admin.sudo_password }}"
+      when: node.role == 'worker' and node_install_needed
+      register: node_join_token
+      changed_when: node_install_needed
+      no_log: true
+
+    - name: Store the join token on its destination node
+      ansible.builtin.copy:
+        content: "{{ node_join_token.stdout }}"
+        dest: "{{ cluster.settings.paths.join_token }}"
+        mode: "{{ cluster.settings.deployment.private_file_mode }}"
+      when: node.role == 'worker' and node_install_needed
+      no_log: true
+
+    - name: Install or replace the native service definition
+      ansible.builtin.command:
+        argv: "{{ node.install_argv + (['--force'] if node_installation_files.results[0].stat.exists else []) }}"
+      when: node_install_needed
+      changed_when: node_install_needed
+
+    - name: Start the node with its prepared configuration
+      ansible.builtin.systemd_service:
+        name: "{{ node.service }}"
+        state: "{{ 'restarted' if node_install_needed or node_binary.changed or node_configuration.changed else 'started' }}"
+        enabled: true
+        daemon_reload: true
+
+    - name: Record the successfully installed service arguments
+      ansible.builtin.copy:
+        content: "{{ node.install_argv | to_nice_json }}\n"
+        dest: "{{ node.record_path }}"
+        mode: "{{ cluster.settings.deployment.file_mode }}"
+
+    - name: Read cached router images
+      ansible.builtin.command:
+        argv: ["{{ cluster.settings.paths.binary }}", ctr, --namespace, k8s.io, images, list, -q]
+      when: node.preload_argv | length > 0
+      register: node_images
+      until: node_images.rc == 0
+      retries: "{{ cluster.settings.deployment.api_retries }}"
+      delay: "{{ cluster.settings.deployment.api_delay }}"
+      changed_when: false
+
+    - name: Cache the prepared images before bootstrap DNS is stopped
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop: "{{ node.preload_argv }}"
+      when: item[-1] not in node_images.stdout_lines
+      changed_when: item[-1] not in node_images.stdout_lines

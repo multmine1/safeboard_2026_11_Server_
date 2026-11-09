@@ -1,0 +1,32 @@
+- name: Prepare the hypervisor route through the main router
+  become: true
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+    ansible_become_exe: "{{ controller.become_exe }}"
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the existing routes on the prepared controller interface
+      ansible.builtin.command:
+        argv: [ip, -json, -4, route, show, dev, "{{ controller.interface }}"]
+      register: controller_routes
+      changed_when: false
+
+    - name: Restore only the prepared bootstrap route when missing or different
+      ansible.builtin.command:
+        argv: [ip, route, replace, "{{ item.to }}", via, "{{ item.via }}", dev, "{{ controller.interface }}"]
+      loop: "{{ routes }}"
+      when: >-
+        controller_routes.stdout | from_json | selectattr('gateway', 'defined') |
+        selectattr('dst', 'equalto', item.to) | selectattr('gateway', 'equalto', item.via) | list | length == 0
+      changed_when: true
+
+    - name: Create the vmctl volume links
+      ansible.builtin.file:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        state: link
+        follow: false
+        owner: "{{ controller.storage_user }}"
+        group: "{{ controller.storage_user }}"
+      loop: "{{ hostvars.values() | selectattr('storage_links', 'defined') | map(attribute='storage_links') | flatten }}"

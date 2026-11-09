@@ -1,0 +1,221 @@
+{
+  "name": "metrics",
+  "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+  "enabled": true,
+  "component": "victoria-metrics-single",
+  "chart": {
+    "values": {
+      "server": {
+        "fullnameOverride": "metrics",
+        "mode": "deployment",
+        "retentionPeriod": "7d",
+        "persistentVolume": {
+          "enabled": true,
+          "existingClaim": "metrics-data"
+        },
+        "service": {
+          "clusterIP": "",
+          "externalIPs": [],
+          "externalTrafficPolicy": "Local"
+        },
+        "scrape": {
+          "enabled": true,
+          "config": {
+            "global": {
+              "scrape_interval": "30s"
+            },
+            "scrape_configs": [
+              {
+                "job_name": "victoriametrics",
+                "static_configs": [
+                  {
+                    "targets": [
+                      "localhost:8428"
+                    ]
+                  }
+                ]
+              },
+              {
+                "job_name": "hypervisor",
+                "static_configs": [
+                  {
+                    "targets": []
+                  }
+                ],
+                "scrape_timeout": "10s"
+              }
+            ]
+          }
+        },
+        "podSecurityContext": {
+          "enabled": true,
+          "runAsUser": 1000,
+          "runAsGroup": 1000,
+          "fsGroup": 1000
+        }
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/server/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/server/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/server/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/address",
+      "path": "/chart/values/server/service/externalIPs/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/services/metrics/port",
+      "path": "/chart/values/server/service/servicePort"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/data",
+      "path": "/guest/directories/0/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/volumes/data",
+      "path": "/cluster_resources/0/spec/local/path"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/cluster_resources/0/spec/claimRef/namespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/id",
+      "path": "/cluster_resources/0/spec/nodeAffinity/required/nodeSelectorTerms/0/matchExpressions/0/values/0"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/server/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/server/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/host-metrics/dns_socket",
+      "path": "/chart/values/server/scrape/config/scrape_configs/1/static_configs/0/targets/0"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/metrics",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "storage": {
+    "volumes": {
+      "data": {
+        "mount": "fast",
+        "directory": "metrics"
+      }
+    }
+  },
+  "guest": {
+    "directories": [
+      {
+        "owner": "1000",
+        "group": "1000",
+        "mode": "0750"
+      }
+    ]
+  },
+  "cluster_resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {
+        "name": "metrics-data"
+      },
+      "spec": {
+        "capacity": {
+          "storage": "32Gi"
+        },
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {
+          "name": "metrics-data"
+        },
+        "local": {},
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "skeleton.vm",
+                    "operator": "In",
+                    "values": []
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "metrics-data"
+      },
+      "spec": {
+        "volumeName": "metrics-data",
+        "storageClassName": "",
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "32Gi"
+          }
+        }
+      }
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 768
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

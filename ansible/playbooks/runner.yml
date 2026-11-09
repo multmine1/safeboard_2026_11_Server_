@@ -1,0 +1,42 @@
+- name: Prepare the dedicated CI host before starting its workload
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/deployment.json
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/applied.json
+  tasks:
+    - name: Read the prepared cluster and application plans
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../configs/generated/k0s/{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: cluster.json, name: cluster}
+        - {file: applications/deployment.json, name: application_deployment}
+
+    - name: Select the declared CI workload
+      ansible.builtin.set_fact:
+        application: "{{ application_deployment.applications.ci }}"
+
+    - name: Read the current guest and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+    - name: Require the enabled CI workload and running dependency VMs
+      ansible.builtin.assert:
+        that:
+          - application.enabled
+          - application.required_vms | difference(available_vms) | length == 0
+        fail_msg: Start the CI VM and its dependency VMs, then prepare the guest OS and k0s node.
+
+    - name: Require the prepared native runner identity
+      ansible.builtin.assert:
+        that:
+          - vault_store.runner.uuid is defined
+          - vault_store.runner.token is defined
+      no_log: true
+
+    - name: Prepare the runner's declared host requirements
+      ansible.builtin.include_tasks: stages/application-host.yml

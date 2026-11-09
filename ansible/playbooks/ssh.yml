@@ -1,0 +1,20 @@
+- name: Configure the Mac hypervisor SSH aliases
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/hypervisor-bootstrap.json
+  vars:
+    identity_file: "{{ macos_public_key_file }}"
+    identity_agent: SSH_AUTH_SOCK
+    ssh_connections: "{{ hypervisor_connections }}"
+    ssh_use_fallback: true
+  tasks:
+    - name: Update only the managed hypervisor block
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      ansible.builtin.blockinfile:
+        path: "{{ lookup('env', 'HOME') }}/.ssh/config"
+        insertbefore: BOF
+        marker: '# {mark} hypervisor'
+        block: "{{ lookup('template', playbook_dir + '/../roles/hypervisor/templates/ssh.conf.j2') }}"

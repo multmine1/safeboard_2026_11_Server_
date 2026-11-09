@@ -1,0 +1,42 @@
+- name: Ask for the snapshot to restore into the separate recovery directory
+  ansible.builtin.pause:
+    prompt: Snapshot ID from the snapshots action
+  register: backup_snapshot_prompt
+  when: backup_snapshot is not defined
+
+- name: Select the explicit native snapshot identifier
+  ansible.builtin.set_fact:
+    backup_restore_snapshot: "{{ backup_snapshot | default(backup_snapshot_prompt.user_input | default('')) | trim }}"
+
+- name: Require a nonempty snapshot identifier
+  ansible.builtin.assert:
+    that: backup_restore_snapshot | length > 0
+
+- name: Reject a recovery location redirected by a symbolic link
+  ansible.builtin.assert:
+    that: (backup.restore_directory | realpath) == backup.restore_directory
+
+- name: Create the separate private recovery directory
+  ansible.builtin.file:
+    path: "{{ backup.restore_directory }}"
+    state: directory
+    mode: "{{ vault_directory_mode }}"
+
+- name: Inspect the recovery directory before writing
+  ansible.builtin.find:
+    paths: "{{ backup.restore_directory }}"
+    hidden: true
+    file_type: any
+  register: backup_restore_files
+
+- name: Require an empty recovery directory
+  ansible.builtin.assert:
+    that: backup_restore_files.matched == 0
+    fail_msg: Inspect or move the previous recovery before restoring another snapshot.
+
+- name: Restore and verify the selected snapshot without replacing working data
+  ansible.builtin.command:
+    argv: "{{ backup.restore_argv + [backup_restore_snapshot] }}"
+    stdin: "{{ vault_store.backup.repository_password }}"
+  changed_when: true
+  no_log: true

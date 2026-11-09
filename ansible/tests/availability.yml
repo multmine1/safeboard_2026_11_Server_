@@ -1,0 +1,29 @@
+- name: Verify runtime selection against prepared paths without SSH or Vault
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    infrastructure:
+      vms:
+        root: {name: root-domain}
+        router: {name: router-domain}
+        worker: {name: worker-domain}
+        db: {name: database-domain}
+    vm_dependencies:
+      root: [root]
+      router: [root, router]
+      worker: [root, router, worker]
+      db: [root, db]
+    runtime_cases:
+      - running: [root-domain, router-domain, worker-domain, database-domain, unmanaged-domain]
+        expected: [root, router, worker, db]
+      - running: [root-domain, worker-domain, database-domain]
+        expected: [root, db]
+      - running: [router-domain, worker-domain, database-domain]
+        expected: []
+  tasks:
+    - name: Verify each independent router availability case
+      ansible.builtin.include_tasks: availability-case.yml
+      loop: "{{ runtime_cases }}"
+      loop_control:
+        loop_var: runtime_case

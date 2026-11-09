@@ -1,0 +1,41 @@
+- name: Configure guest accounts
+  ansible.builtin.import_tasks: accounts.yml
+
+- name: Read the network ownership marker
+  ansible.builtin.stat:
+    path: "{{ guest_plan.network_owner.marker }}"
+  register: guest_network_owner
+  when: guest_plan.network_owner is defined
+
+- name: Prepare upstream DNS before installing packages
+  ansible.builtin.include_tasks: bootstrap-network.yml
+  when:
+    - guest_plan.bootstrap_netplan is defined
+    - guest_plan.network_owner is not defined or not guest_network_owner.stat.exists
+
+- name: Install guest packages
+  ansible.builtin.import_tasks: packages.yml
+- name: Prepare guest data disks
+  ansible.builtin.import_tasks: storage.yml
+- name: Apply guest OS configuration
+  ansible.builtin.import_tasks: configuration.yml
+
+- name: Prepare the network before Kubernetes takes ownership
+  ansible.builtin.include_role:
+    name: network
+    apply:
+      delegate_to: "{{ guest_plan.id }}"
+      become: true
+  vars:
+    network_plan: "{{ guest_plan.network }}"
+  when: guest_plan.network_owner is not defined or not guest_network_owner.stat.exists
+
+- name: Start the independent bootstrap DNS
+  ansible.builtin.systemd_service:
+    name: "{{ guest_plan.network.bootstrap_service }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when:
+    - guest_plan.network.bootstrap_service is defined
+    - guest_plan.network_owner is not defined or not guest_network_owner.stat.exists

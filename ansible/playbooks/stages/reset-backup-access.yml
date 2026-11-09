@@ -1,0 +1,102 @@
+- name: Release only prepared backup access on the physical hypervisor
+  delegate_to: "{{ controller.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read the declared backup service identity before revoking its ancestor access
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ reset.backup_repository_access.service_user }}"
+        fail_key: false
+      register: reset_backup_service_identity
+      when: reset.backup_repository_access.service_user is defined
+
+    - name: Revoke only the backup service's traversal ACL before removing its identity
+      ansible.posix.acl:
+        path: "{{ item.item }}"
+        etype: user
+        entity: "{{ reset_backup_service_identity.ansible_facts.getent_passwd[reset.backup_repository_access.service_user][1] }}"
+        state: absent
+      loop: "{{ reset_backup_paths }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when:
+        - reset.backup_repository_access.service_user is defined
+        - item.item in reset.backup_repository_access.parents
+        - item.stat.exists
+        - reset_backup_service_identity.ansible_facts.getent_passwd[reset.backup_repository_access.service_user] is not none
+
+    - name: Revoke named and inherited service access within the repository before UID reuse
+      ansible.posix.acl:
+        path: "{{ reset.backup_repository_access.repository }}"
+        etype: user
+        entity: "{{ reset_backup_service_identity.ansible_facts.getent_passwd[reset.backup_repository_access.service_user][1] }}"
+        recursive: true
+        follow: false
+        default: "{{ item }}"
+        state: absent
+      loop: [false, true]
+      when:
+        - reset.backup_repository_access.service_user is defined
+        - reset_backup_service_identity.ansible_facts.getent_passwd[reset.backup_repository_access.service_user] is not none
+        - >-
+          (reset_backup_paths | selectattr('item', 'equalto', reset.backup_repository_access.repository) | first).stat.exists
+
+    - name: Revoke named and inherited transport access within the repository before UID reuse
+      ansible.posix.acl:
+        path: "{{ reset.backup_repository_access.repository }}"
+        etype: user
+        entity: "{{ reset_removable_account.ansible_facts.getent_passwd[reset.account.name][1] }}"
+        recursive: true
+        follow: false
+        default: "{{ item }}"
+        state: absent
+      loop: [false, true]
+      when:
+        - reset.backup_repository_access.service_user is defined
+        - reset_removable_account.ansible_facts.getent_passwd[reset.account.name] is not none
+        - >-
+          (reset_backup_paths | selectattr('item', 'equalto', reset.backup_repository_access.repository) | first).stat.exists
+
+    - name: Remove only the disposable account's traversal ACL before account deletion
+      ansible.posix.acl:
+        path: "{{ item.item }}"
+        etype: user
+        entity: "{{ reset_removable_account.ansible_facts.getent_passwd[reset.account.name][1] }}"
+        state: absent
+      loop: "{{ reset_backup_paths }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when:
+        - item.item in reset.backup_repository_access.parents
+        - item.stat.exists
+        - reset_removable_account.ansible_facts.getent_passwd[reset.account.name] is not none
+
+    - name: Keep traversal for the surviving administrator when its repository is preserved
+      ansible.posix.acl:
+        path: "{{ item.item }}"
+        etype: user
+        entity: "{{ reset_admin_account.ansible_facts.getent_passwd[reset.controller_user][1] }}"
+        permissions: x
+        state: present
+      loop: "{{ reset_backup_paths }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when:
+        - reset.backup_repository_access.repository not in reset.remove_directories
+        - item.item in reset.backup_repository_access.parents
+        - item.stat.exists
+        - item.stat.uid | int != reset_admin_account.ansible_facts.getent_passwd[reset.controller_user][1] | int
+
+    - name: Give a preserved repository to the surviving administrator before deleting its old owner
+      ansible.builtin.file:
+        path: "{{ reset.backup_repository_access.repository }}"
+        state: directory
+        owner: "{{ reset.controller_user }}"
+        group: "{{ reset_admin_account.ansible_facts.getent_passwd[reset.controller_user][2] }}"
+        recurse: true
+      when:
+        - reset.backup_repository_access.repository not in reset.remove_directories
+        - >-
+          (reset_backup_paths | selectattr('item', 'equalto', reset.backup_repository_access.repository) | first).stat.exists

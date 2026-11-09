@@ -1,0 +1,15 @@
+- name: Read current power without starting any required VM
+  community.libvirt.virt:
+    uri: "{{ backup.libvirt_uri }}"
+    command: list_vms
+    state: running
+  register: backup_running_domains
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+
+- name: Require every generated controller database and router dependency to be running
+  ansible.builtin.assert:
+    that: backup.required_domains | difference(backup_running_domains.list_vms) | length == 0
+    fail_msg: Start the prepared backup dependencies and their routers before creating snapshots.

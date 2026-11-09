@@ -1,0 +1,22 @@
+- name: Read the prepared router workload and controller plan
+  ansible.builtin.include_vars:
+    file: "{{ generated }}/k0s/cluster.json"
+    name: cluster
+
+- name: Read the existing controller administrator only in memory
+  ansible.builtin.set_fact:
+    control_secrets: "{{ {'guest_admin': vault_store.guests[cluster.controller]} }}"
+  no_log: true
+
+- name: Publish the router's new policy through its Kubernetes owner
+  ansible.builtin.include_tasks:
+    file: k0s-stack.yml
+    apply:
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+  vars:
+    stack: "{{ cluster.stacks.routers | selectattr('id', 'equalto', guest_id) | first }}"
+    ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+    ansible_private_key: "{{ hostvars['localhost'].control_secrets.guest_admin.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].control_secrets.guest_admin.key_passphrase }}"
+    ansible_become_password: "{{ hostvars['localhost'].control_secrets.guest_admin.sudo_password }}"

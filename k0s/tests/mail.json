@@ -1,0 +1,14 @@
+{
+  "application": "stalwart",
+  "probe_application": "nextcloud",
+  "sender": "nextcloud",
+  "recipient": "postmaster",
+  "smtp_service": "submission",
+  "imap_service": "imaps",
+  "inbound_service": "mail",
+  "external_probe_recipient": "acceptance@example.org",
+  "relay_rejection_codes": [530, 550, 551, 553, 554],
+  "timeout_seconds": 20,
+  "delivery_attempts": 12,
+  "delivery_delay_seconds": 5
+}

@@ -1,0 +1,21 @@
+- name: Create the release cache
+  ansible.builtin.file:
+    path: "{{ binary.cache | dirname }}"
+    state: directory
+    mode: "{{ guest_plan.directory_mode }}"
+
+- name: Download the pinned release archive
+  ansible.builtin.get_url:
+    url: "{{ binary.url }}"
+    checksum: "{{ binary.checksum }}"
+    dest: "{{ binary.cache }}"
+    mode: "{{ guest_plan.file_mode if binary.include is defined else guest_plan.binary_mode }}"
+
+- name: Extract the managed executable
+  ansible.builtin.unarchive:
+    src: "{{ binary.cache }}"
+    dest: "{{ binary.directory }}"
+    remote_src: true
+    include: "{{ binary.include }}"
+    extra_opts: "{{ binary.extra_opts | default(omit) }}"
+  when: binary.include is defined

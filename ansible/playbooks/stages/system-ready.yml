@@ -1,0 +1,27 @@
+- name: Wait for the declared deployment rollout
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, rollout, status, "{{ readiness.resource }}",
+           --namespace, "{{ readiness.namespace }}",
+           "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  when: readiness.pod_selector is none
+  changed_when: false
+
+- name: Wait for system Pods to appear on the selected running nodes
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, --for=create, pod,
+           --namespace, "{{ readiness.namespace }}", --selector, "{{ readiness.pod_selector }}",
+           --field-selector, "spec.nodeName={{ item }}",
+           "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  loop: "{{ readiness.nodes | select('in', runtime_cluster_order) | list }}"
+  when: readiness.pod_selector is not none
+  changed_when: false
+
+- name: Wait for system Pods on the selected nodes to become ready
+  ansible.builtin.command:
+    argv: ["{{ cluster.settings.paths.binary }}", kubectl, wait, --for=condition=Ready, pod,
+           --namespace, "{{ readiness.namespace }}", --selector, "{{ readiness.pod_selector }}",
+           --field-selector, "spec.nodeName={{ item }}",
+           "--timeout={{ cluster.settings.deployment.readiness_timeout }}"]
+  loop: "{{ readiness.nodes | select('in', runtime_cluster_order) | list }}"
+  when: readiness.pod_selector is not none
+  changed_when: false

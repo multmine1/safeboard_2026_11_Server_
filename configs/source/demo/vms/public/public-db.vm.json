@@ -1,0 +1,34 @@
+{
+  "id": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+  "name": "db",
+  "type": "data",
+  "vcpu": 4,
+  "ram_mib": 8192,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 24
+    },
+    {
+      "name": "fast",
+      "storage": "nvme",
+      "size_gib": 128
+    },
+    {
+      "name": "data",
+      "storage": "ssd",
+      "size_gib": 256
+    },
+    {
+      "name": "archive",
+      "storage": "hd",
+      "size_gib": 256
+    },
+    {
+      "name": "cloud",
+      "storage": "ssd",
+      "size_gib": 128
+    }
+  ]
+}

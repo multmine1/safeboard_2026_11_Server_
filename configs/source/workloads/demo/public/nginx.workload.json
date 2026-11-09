@@ -1,0 +1,79 @@
+{
+  "name": "nginx",
+  "vm": "7f35e5f3-a7a7-5cd2-bc05-cf87a844443a",
+  "enabled": true,
+  "component": "nginx-ingress",
+  "chart": {
+    "values": {
+      "controller": {
+        "hostPort": {
+          "enable": true
+        },
+        "service": {
+          "type": "ClusterIP"
+        },
+        "pod": {},
+        "strategy": {
+          "type": "Recreate"
+        },
+        "enableSnippets": true
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/controller/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/controller/pod/extraLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/controller/pod/annotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/namespace",
+      "path": "/chart/values/controller/watchNamespace"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/controller/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/controller/resources"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/nginx-nginx-ingress-controller",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 100,
+            "ram_mib": 128
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 256
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

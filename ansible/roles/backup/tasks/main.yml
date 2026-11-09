@@ -1,0 +1,36 @@
+- name: Check the declared mount and repository boundary before writing
+  ansible.builtin.import_tasks: guards.yml
+
+- name: Check the prepared remote backup dependencies
+  ansible.builtin.import_tasks: availability.yml
+  when: backup_action == 'run' and backup.required_domains | length > 0
+
+- name: Prepare a private repository for a controller-only configuration
+  ansible.builtin.include_tasks: repository-private.yml
+  when: backup.repository_access is not defined
+
+- name: Apply the shared repository plan for the native writer and Mac controller
+  ansible.builtin.include_role:
+    name: hypervisor
+    tasks_from: backup-repository
+    apply:
+      delegate_to: "{{ backup.hypervisor.admin_alias }}"
+      become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+  when: backup.repository_access is defined
+
+- name: Create the controller's private Restic cache
+  ansible.builtin.file:
+    path: "{{ backup.cache }}"
+    state: directory
+    mode: "{{ vault_directory_mode }}"
+
+- name: Use SFTP and deliver the repository password through native stdin
+  ansible.builtin.include_tasks:
+    file: "{{ 'restore.yml' if backup_action == 'restore' else 'operation.yml' }}"
+    apply:
+      environment:
+        RESTIC_REPOSITORY: "{{ backup.repository_url }}"
+        RESTIC_CACHE_DIR: "{{ backup.cache }}"
+        RESTIC_PASSWORD_FILE: /dev/stdin

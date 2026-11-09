@@ -1,0 +1,16 @@
+- name: Require every planned host key file to exist in the saved identity
+  ansible.builtin.assert:
+    that: sshd.backup.files | map(attribute='path') | difference(ssh_host_keys.keys()) | length == 0
+    fail_msg: The Vault backup does not contain every declared host key file.
+  no_log: true
+
+- name: Restore the declared keys on the hypervisor with their original permissions
+  ansible.builtin.copy:
+    content: "{{ ssh_host_keys[item.path] | b64decode }}"
+    dest: "{{ item.path }}"
+    owner: "{{ sshd.owner }}"
+    group: "{{ sshd.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ sshd.backup.files }}"
+  no_log: true
+  notify: Reload SSH

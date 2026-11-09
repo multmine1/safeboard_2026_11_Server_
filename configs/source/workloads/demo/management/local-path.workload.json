@@ -1,0 +1,88 @@
+{
+  "name": "local-path",
+  "vm": "fa226c98-5672-5491-99c1-1442558cf103",
+  "enabled": true,
+  "component": "local-path-provisioner",
+  "storage": {
+    "local_paths": [
+      {
+        "vm": "1082c550-658a-5c14-b1c0-fd86e1b718bb",
+        "mount": "fast",
+        "directory": "kubernetes"
+      },
+      {
+        "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+        "mount": "fast",
+        "directory": "kubernetes"
+      }
+    ]
+  },
+  "chart": {
+    "values": {
+      "fullnameOverride": "local-path",
+      "storageClass": {
+        "name": "local-fast",
+        "defaultVolumeType": "local",
+        "reclaimPolicy": "Retain",
+        "defaultClass": false,
+        "volumeBindingMode": "WaitForFirstConsumer"
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/commonLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/storage/local_paths",
+      "path": "/chart/values/nodePathMap"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/resources"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/local-path",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 25,
+            "ram_mib": 32
+          },
+          "limits": {
+            "cpu_millicores": 100,
+            "ram_mib": 128
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

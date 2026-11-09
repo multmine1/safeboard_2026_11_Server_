@@ -1,0 +1,13 @@
+- name: Create the private directory for the shared Vault
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../{{ vault_file | dirname }}"
+    state: directory
+    mode: "{{ vault_directory_mode }}"
+
+- name: Save all sections of the shared Vault without plaintext files
+  ansible.builtin.copy:
+    content: "{{ {'vault_store': vault_store} | to_nice_yaml | ansible.builtin.vault(vault_password) }}"
+    dest: "{{ playbook_dir }}/../../{{ vault_file }}"
+    mode: "{{ vault_file_mode }}"
+    decrypt: false
+  no_log: true

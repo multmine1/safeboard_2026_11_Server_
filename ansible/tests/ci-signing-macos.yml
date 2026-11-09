@@ -1,0 +1,117 @@
+- name: Validate the generated private signing policy with native Cosign on Mac
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../k0s/requirements/components.json
+  vars:
+    ci_signing_root: "{{ playbook_dir | dirname | dirname }}"
+    ci_signing_binary: "{{ ci_signing_root }}/{{ ci.signing.controller_validation.binary }}"
+    ci_signing_resources: >-
+      {{ lookup('ansible.builtin.file', ci_signing_root ~ '/configs/generated/k0s/applications/ci/manifests.json') | from_json }}
+    ci_signing_config: >-
+      {{ (ci_signing_resources['items'] | selectattr('kind', 'equalto', 'ConfigMap') |
+          selectattr('metadata.name', 'equalto', 'ci-config') | first).data['signing-config.json'] }}
+  tasks:
+    - name: Create the declared native validation tool directory
+      ansible.builtin.file:
+        path: "{{ ci_signing_binary | dirname }}"
+        state: directory
+        mode: '0755'
+
+    - name: Prepare the pinned native Cosign validation binary
+      ansible.builtin.get_url:
+        url: "{{ ci.signing.controller_validation.url }}"
+        checksum: "{{ ci.signing.controller_validation.checksum }}"
+        dest: "{{ ci_signing_binary }}"
+        mode: '0755'
+
+    - name: Create an isolated temporary signing fixture
+      ansible.builtin.tempfile:
+        state: directory
+      register: ci_signing_fixture
+
+    - name: Validate signing and rejection without real credentials or network access
+      environment:
+        COSIGN_PASSWORD: ''
+      block:
+        - name: Write the generated signing policy
+          ansible.builtin.copy:
+            content: "{{ ci_signing_config }}"
+            dest: "{{ ci_signing_fixture.path }}/signing-config.json"
+            mode: '0600'
+
+        - name: Write the fixture artifact
+          ansible.builtin.copy:
+            content: "private delivery fixture\n"
+            dest: "{{ ci_signing_fixture.path }}/artifact.txt"
+            mode: '0600'
+
+        - name: Generate a disposable native signing identity
+          ansible.builtin.command:
+            argv: ["{{ ci_signing_binary }}", generate-key-pair, --output-key-prefix, "{{ ci_signing_fixture.path }}/cosign"]
+          changed_when: true
+          no_log: true
+
+        - name: Sign with the generated policy while the OS denies outbound networking
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/sandbox-exec
+              - -p
+              - '(version 1) (allow default) (deny network-outbound)'
+              - "{{ ci_signing_binary }}"
+              - sign-blob
+              - --key
+              - "{{ ci_signing_fixture.path }}/cosign.key"
+              - --signing-config
+              - "{{ ci_signing_fixture.path }}/signing-config.json"
+              - --bundle
+              - "{{ ci_signing_fixture.path }}/artifact.bundle.json"
+              - --yes
+              - "{{ ci_signing_fixture.path }}/artifact.txt"
+          changed_when: true
+
+        - name: Verify the native signature without public transparency services
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/sandbox-exec
+              - -p
+              - '(version 1) (allow default) (deny network-outbound)'
+              - "{{ ci_signing_binary }}"
+              - verify-blob
+              - --key
+              - "{{ ci_signing_fixture.path }}/cosign.pub"
+              - --bundle
+              - "{{ ci_signing_fixture.path }}/artifact.bundle.json"
+              - --insecure-ignore-tlog
+              - "{{ ci_signing_fixture.path }}/artifact.txt"
+          changed_when: false
+
+        - name: Change the artifact after signing
+          ansible.builtin.copy:
+            content: "changed artifact\n"
+            dest: "{{ ci_signing_fixture.path }}/artifact.txt"
+            mode: '0600'
+
+        - name: Require the signature gate to reject the changed artifact
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/sandbox-exec
+              - -p
+              - '(version 1) (allow default) (deny network-outbound)'
+              - "{{ ci_signing_binary }}"
+              - verify-blob
+              - --key
+              - "{{ ci_signing_fixture.path }}/cosign.pub"
+              - --bundle
+              - "{{ ci_signing_fixture.path }}/artifact.bundle.json"
+              - --insecure-ignore-tlog
+              - "{{ ci_signing_fixture.path }}/artifact.txt"
+          register: ci_signing_tampered
+          changed_when: false
+          failed_when: ci_signing_tampered.rc == 0
+      always:
+        - name: Remove the disposable key and signing fixture
+          ansible.builtin.file:
+            path: "{{ ci_signing_fixture.path }}"
+            state: absent

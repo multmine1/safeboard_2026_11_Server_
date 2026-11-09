@@ -1,0 +1,25 @@
+- name: Bind this ordinary worker's prepared policy and administrator
+  ansible.builtin.set_fact:
+    application_firewall_context:
+      vm: "{{ application.vm }}"
+      plan: "{{ hostvars[application.vm].network }}"
+      credentials: "{{ vault_store.guests[application.vm] }}"
+  no_log: true
+
+- name: Apply the worker's current policy before its application resources
+  ansible.builtin.include_role:
+    name: network
+    tasks_from: firewall
+    apply:
+      delegate_to: "{{ hostvars['localhost'].application_firewall_context.vm }}"
+      become: true
+  vars:
+    network_plan: "{{ hostvars['localhost'].application_firewall_context.plan }}"
+    ansible_user: "{{ hostvars[hostvars['localhost'].application_firewall_context.vm].access.admin_user }}"
+    ansible_private_key: "{{ hostvars['localhost'].application_firewall_context.credentials.private_key }}"
+    ansible_private_key_passphrase: "{{ hostvars['localhost'].application_firewall_context.credentials.key_passphrase }}"
+    ansible_become_password: "{{ hostvars['localhost'].application_firewall_context.credentials.sudo_password }}"
+
+- name: Remember the ordinary worker policy applied during this delivery
+  ansible.builtin.set_fact:
+    application_firewall_vms: "{{ application_firewall_vms | default([]) + [application.vm] }}"

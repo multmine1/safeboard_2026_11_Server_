@@ -1,0 +1,20 @@
+- name: Set the UFW default policies
+  community.general.ufw:
+    direction: "{{ item.key }}"
+    policy: "{{ item.value }}"
+  loop: "{{ network_plan.ufw.defaults | dict2items }}"
+
+- name: Apply the generated UFW permissions
+  community.general.ufw:
+    rule: "{{ item.rule }}"
+    direction: "{{ item.direction }}"
+    proto: "{{ item.proto }}"
+    from_ip: "{{ item.from_ip }}"
+    to_ip: "{{ item.to_ip }}"
+    port: "{{ item.port | default(omit) }}"
+    route: "{{ item.route | default(omit) }}"
+  loop: "{{ network_plan.ufw.rules }}"
+
+- name: Activate UFW
+  community.general.ufw:
+    state: "{{ network_plan.ufw.state }}"

@@ -1,0 +1,123 @@
+{
+  "ansible_become_exe": "/usr/bin/sudo.ws",
+  "ansible_python_interpreter": "/usr/bin/python3",
+  "hypervisor_address": "192.0.2.2",
+  "hypervisor_alias": "hypervisor",
+  "hypervisor_user": "vmctl",
+  "hypervisor_connections": [
+    {
+      "aliases": [
+        "hypervisor",
+        "hypervisor-local"
+      ],
+      "hostname": "{{ hypervisor_address }}"
+    },
+    {
+      "aliases": [
+        "hypervisor-remote"
+      ],
+      "hostname": "example.test",
+      "proxy_jump": "bastion",
+      "host_key_alias": "{{ hypervisor_address }}"
+    }
+  ],
+  "controller_user": "operator",
+  "controller_identity_file": ".ssh/hypervisor_ed25519",
+  "project_root": "{{ playbook_dir | dirname | dirname }}",
+  "macos_public_key_file": "{{ project_root }}/environment/.tools/ssh/vmctl.pub",
+  "generator": {
+    "storage_root": "/srv/example-vms",
+    "storage_classes": {
+      "nvme": {},
+      "ssd": {
+        "uuid": "10000000-0000-4000-8000-000000000010",
+        "fstype": "ext4",
+        "opts": "defaults",
+        "passno": "2"
+      },
+      "hd": {
+        "uuid": "10000000-0000-4000-8000-000000000011",
+        "fstype": "ext4",
+        "opts": "defaults",
+        "passno": "2"
+      }
+    },
+    "vmctl_home": "/home/vmctl",
+    "controller": {
+      "nwfilter": {
+        "path": "/var/lib/skeleton/hypervisor/nwfilter.xml",
+        "references": [
+          "no-mac-spoofing",
+          "no-arp-spoofing"
+        ],
+        "directory_mode": "0755",
+        "file_mode": "0644"
+      },
+      "local_libvirt_uri": "qemu:///system"
+    }
+  },
+  "hypervisor_network": {
+    "path": "/etc/netplan/60-hypervisor.yaml",
+    "mode": "0600",
+    "bridge": "br-wan",
+    "prefix": 24,
+    "gateway": "192.0.2.1",
+    "route_metric": 100,
+    "renderer": "NetworkManager",
+    "ethernet": {
+      "match": {
+        "macaddress": "02:00:00:00:00:01"
+      },
+      "set-name": "enp1s0",
+      "dhcp4": false,
+      "dhcp6": false,
+      "wakeonlan": true
+    },
+    "bridge_settings": {
+      "dhcp4": false,
+      "dhcp6": false,
+      "accept-ra": false,
+      "parameters": {
+        "stp": false
+      },
+      "nameservers": {
+        "addresses": [
+          "192.0.2.1"
+        ]
+      }
+    },
+    "runtime_marker": "/var/lib/skeleton/hypervisor/network-owner",
+    "wake_port": 9
+  },
+  "hypervisor_sysctl": {
+    "net.ipv4.ip_forward": 0,
+    "net.ipv6.conf.all.forwarding": 0
+  },
+  "hypervisor_sysctl_file": "/etc/sysctl.d/60-hypervisor.conf",
+  "hypervisor_files": {
+    "/etc/apt/apt.conf.d/20auto-upgrades": "APT::Periodic::Update-Package-Lists \"0\";\nAPT::Periodic::Unattended-Upgrade \"0\";\n"
+  },
+  "hypervisor_file_mode": "0644",
+  "storage_owner": "libvirt-qemu",
+  "storage_group": "libvirt-qemu",
+  "storage_directory_mode": "0750",
+  "hypervisor_reconnect": {
+    "timeout": 90,
+    "delay": 3
+  },
+  "hypervisor_admin_alias": "host-bootstrap",
+  "vmctl_directory_mode": "0750",
+  "hypervisor_units": {
+    "NetworkManager.service": [],
+    "libvirtd.service": [
+      "libvirtd.socket",
+      "libvirtd-ro.socket",
+      "libvirtd-admin.socket"
+    ],
+    "ssh.service": [
+      "ssh.socket",
+      "sshd.service",
+      "ssh-access.target"
+    ]
+  }
+}

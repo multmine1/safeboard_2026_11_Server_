@@ -1,0 +1,102 @@
+- name: Prepare the immutable Debian guest image
+  hosts: hypervisors
+  become: true
+  vars_files:
+    - ../../configs/generated/ansible/host-requirements.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/image.json
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Check the selected host platform before installing image tools
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: platform
+      become: false
+
+    - name: Install and hold the declared image preparation tools
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: packages
+      vars:
+        hypervisor_managed_packages: "{{ image.hypervisor_packages }}"
+
+    - name: Inspect the prepared image
+      ansible.builtin.stat:
+        path: "{{ image.path }}"
+      register: prepared_image
+
+    - name: Prepare the base once
+      when: not prepared_image.stat.exists
+      block:
+        - name: Create the image directory
+          ansible.builtin.file:
+            path: "{{ image.path | dirname }}"
+            state: directory
+            mode: '0755'
+
+        - name: Download the pinned official cloud image
+          ansible.builtin.get_url:
+            url: "{{ image.url }}"
+            checksum: "{{ image.checksum }}"
+            dest: "{{ image.path }}.download"
+            mode: '0644'
+
+        - name: Save the immutable Debian package sources
+          ansible.builtin.copy:
+            content: "{{ image.apt_sources }}"
+            dest: "{{ image.path }}.sources"
+            mode: '0644'
+
+        - name: Copy the downloaded image for offline customization
+          ansible.builtin.copy:
+            src: "{{ image.path }}.download"
+            dest: "{{ image.path }}.preparing"
+            remote_src: true
+            mode: '0644'
+
+        - name: Save the declared package acquisition configuration
+          ansible.builtin.copy:
+            content: "{{ image.apt_config.content }}"
+            dest: "{{ image.path }}.apt-config"
+            mode: '0644'
+
+        - name: Install the minimal guest prerequisites offline
+          ansible.builtin.command:
+            argv:
+              - virt-customize
+              - --memsize
+              - "{{ image.prepare_ram_mib | string }}"
+              - --add
+              - "{{ image.path }}.preparing"
+              - --upload
+              - "{{ image.path }}.sources:/etc/apt/sources.list.d/debian.sources"
+              - --upload
+              - "{{ image.path }}.apt-config:{{ image.apt_config.path }}"
+              - --install
+              - "{{ image.packages | join(',') }}"
+              - --run-command
+              - "{{ image.prepare_command }}"
+          register: image_preparation
+          changed_when: not prepared_image.stat.exists
+          until: image_preparation.rc == 0
+          retries: "{{ image.prepare_retries }}"
+          delay: "{{ image.prepare_retry_delay_seconds }}"
+
+        - name: Remove per-instance identities before publishing the common image
+          ansible.builtin.command:
+            argv: [virt-sysprep, --add, "{{ image.path }}.preparing", --operations, "{{ image.sysprep_operations | join(',') }}"]
+          changed_when: not prepared_image.stat.exists
+
+        - name: Publish the prepared image
+          ansible.builtin.command:
+            argv: [mv, "{{ image.path }}.preparing", "{{ image.path }}"]
+          changed_when: not prepared_image.stat.exists
+
+    - name: Keep the shared base read only
+      ansible.builtin.file:
+        path: "{{ image.path }}"
+        owner: root
+        group: root
+        mode: '0444'

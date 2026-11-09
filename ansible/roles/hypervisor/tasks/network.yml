@@ -1,0 +1,47 @@
+- name: Read whether the managed VM network has been activated
+  ansible.builtin.stat:
+    path: "{{ hypervisor_network.runtime_marker }}"
+  register: hypervisor_network_owner
+
+- name: Persist the prepared physical bridge and Wake-on-LAN configuration
+  ansible.builtin.copy:
+    content: >-
+      {{ (hypervisor_runtime_netplan if hypervisor_runtime | default(false) or
+          hypervisor_network_owner.stat.exists else hypervisor_netplan) | to_nice_json }}
+    dest: "{{ hypervisor_network.path }}"
+    mode: "{{ hypervisor_network.mode }}"
+    backup: true
+  register: hypervisor_netplan_file
+
+- name: Retire only the declared superseded network files
+  ansible.builtin.import_tasks: network-retire.yml
+
+- name: Apply the changed physical network configuration
+  when: (hypervisor_netplan_file.changed or hypervisor_retired_network.changed) and not ansible_check_mode
+  block:
+    - name: Generate the native network configuration
+      ansible.builtin.command: netplan generate
+      changed_when: hypervisor_netplan_file.changed or hypervisor_retired_network.changed
+
+    - name: Reapply the running bridge without detaching VM interfaces
+      when: hypervisor_runtime | default(false) or hypervisor_network_owner.stat.exists
+      block:
+        - name: Load the generated NetworkManager profiles
+          ansible.builtin.command: nmcli connection reload
+          changed_when: hypervisor_netplan_file.changed or hypervisor_retired_network.changed
+
+        - name: Reapply the physical interface and bridge profiles in place
+          ansible.builtin.command:
+            argv: [nmcli, device, reapply, "{{ item }}"]
+          loop:
+            - "{{ hypervisor_network.ethernet['set-name'] }}"
+            - "{{ hypervisor_network.bridge }}"
+          changed_when: hypervisor_netplan_file.changed or hypervisor_retired_network.changed
+
+        - name: Clear stale resolver answers after changing DNS
+          ansible.builtin.command: resolvectl flush-caches
+          changed_when: hypervisor_netplan_file.changed or hypervisor_retired_network.changed
+
+    - name: Apply the initial physical bridge configuration
+      ansible.builtin.include_tasks: network-bootstrap.yml
+      when: not (hypervisor_runtime | default(false) or hypervisor_network_owner.stat.exists)

@@ -1,0 +1,92 @@
+- name: Recover one interrupted Helm release through the native CLI
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../k0s/requirements/maintenance.json
+  tasks:
+    - name: Read the generated cluster, application and native client plans
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../configs/generated/k0s/{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: cluster.json, name: cluster}
+        - {file: applications/deployment.json, name: applications}
+        - {file: secrets.json, name: secret_plan}
+
+    - name: Require an explicit existing chart and recovery revision
+      ansible.builtin.assert:
+        that:
+          - recovery_application in applications.applications
+          - applications.applications[recovery_application].has_chart
+          - recovery_revision | int > 0
+          - recovery_expected_revision | int > 0
+
+    - name: Read the existing controller identity only in memory
+      ansible.builtin.set_fact:
+        recovery_control: "{{ vault_store.guests[cluster.controller] }}"
+      no_log: true
+
+    - name: Recover only this application's release
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].recovery_control.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].recovery_control.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].recovery_control.sudo_password }}"
+        recovery_namespace: "{{ applications.applications[recovery_application].namespace }}"
+      environment:
+        KUBECONFIG: "{{ secret_plan.settings.kubeconfig }}"
+      block:
+        - name: Prepare the native recovery client
+          ansible.builtin.include_tasks: stages/helm-tool.yml
+
+        - name: Read the authoritative native release history
+          ansible.builtin.command:
+            argv: ["{{ helm.binary }}", history, "{{ recovery_application }}",
+                   --namespace, "{{ recovery_namespace }}", -o, json]
+          changed_when: false
+          register: recovery_history
+
+        - name: Parse only the native history metadata
+          ansible.builtin.set_fact:
+            recovery_helm_history: "{{ recovery_history.stdout | from_json }}"
+
+        - name: Validate this recovery boundary
+          ansible.builtin.include_tasks: stages/helm-recovery-plan.yml
+
+        - name: Report the exact release recovery boundary
+          ansible.builtin.debug:
+            msg:
+              application: "{{ recovery_application }}"
+              current_revision: "{{ (recovery_helm_history | last).revision }}"
+              current_status: "{{ (recovery_helm_history | last).status }}"
+              target_revision: "{{ recovery_helm_target.revision }}"
+              rollback_required: "{{ recovery_helm_required }}"
+
+        - name: Roll back the interrupted operation without deleting release state or persistent volumes
+          ansible.builtin.command:
+            argv: ["{{ helm.binary }}", rollback, "{{ recovery_application }}", "{{ recovery_revision | int }}",
+                   --namespace, "{{ recovery_namespace }}", --wait, '--server-side=false']
+          when: recovery_helm_required
+          changed_when: true
+
+        - name: Read only the recovered chart's native manifest
+          ansible.builtin.command:
+            argv: ["{{ helm.binary }}", get, manifest, "{{ recovery_application }}",
+                   --namespace, "{{ recovery_namespace }}"]
+          when: recovery_helm_required
+          register: recovery_manifest
+          changed_when: false
+          no_log: true
+
+        - name: Return ownership of the recovered chart's fields to the existing k0s controller
+          ansible.builtin.command:
+            argv: "{{ recovery_helm_owner_argv }}"
+            stdin: "{{ recovery_manifest.stdout }}"
+          when: recovery_helm_required
+          changed_when: true
+          no_log: true

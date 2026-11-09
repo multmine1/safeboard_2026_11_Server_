@@ -1,0 +1,458 @@
+{
+  "name": "hypervisor-dashboard",
+  "vm": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+  "enabled": true,
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "hypervisor-dashboard"
+      },
+      "data": {
+        "hypervisor.json": {
+          "uid": "hypervisor-libvirt",
+          "title": "Hypervisor and virtual machines",
+          "schemaVersion": 39,
+          "version": 1,
+          "editable": false,
+          "timezone": "browser",
+          "refresh": "30s",
+          "time": {
+            "from": "now-1h",
+            "to": "now"
+          },
+          "tags": [
+            "hypervisor",
+            "libvirt"
+          ],
+          "panels": [
+            {
+              "id": 1,
+              "title": "Host collector",
+              "description": "Scrape status for the host metrics endpoint. Compare with the independent TCP probe; a failed scrape alone does not prove a process or host failure.",
+              "type": "stat",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "up{job=\"hypervisor\"}",
+                  "legendFormat": "{{host}}",
+                  "format": "time_series",
+                  "instant": true
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "none",
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Unavailable",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "Reachable",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "overrides": []
+              },
+              "options": {}
+            },
+            {
+              "id": 2,
+              "title": "Host available RAM",
+              "description": "Physical MemAvailable reported by the host collector.",
+              "type": "timeseries",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "mem_available{job=\"hypervisor\"}",
+                  "legendFormat": "{{host}}",
+                  "format": "time_series",
+                  "instant": false
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {}
+            },
+            {
+              "id": 3,
+              "title": "Virtual machine state",
+              "description": "Includes powered-off guests. State 5 alone does not prove a clean shutdown; inspect the reason panel.",
+              "type": "table",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 8
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "libvirt_state_state{job=\"hypervisor\"}",
+                  "legendFormat": "{{domain_name}}",
+                  "format": "table",
+                  "instant": true
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "none",
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Unknown",
+                          "color": "gray"
+                        },
+                        "1": {
+                          "text": "Running",
+                          "color": "green"
+                        },
+                        "2": {
+                          "text": "Blocked",
+                          "color": "orange"
+                        },
+                        "3": {
+                          "text": "Paused",
+                          "color": "orange"
+                        },
+                        "4": {
+                          "text": "Stopping",
+                          "color": "blue"
+                        },
+                        "5": {
+                          "text": "Off; see reason",
+                          "color": "blue"
+                        },
+                        "6": {
+                          "text": "Crashed",
+                          "color": "red"
+                        },
+                        "7": {
+                          "text": "Suspended",
+                          "color": "blue"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true
+              }
+            },
+            {
+              "id": 4,
+              "title": "Reason for powered-off guests",
+              "description": "These enum values apply only to state 5. Unknown can include a guest that has never been started.",
+              "type": "table",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 8
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "libvirt_state_reason{job=\"hypervisor\"} and on(instance,domain_name) (libvirt_state_state{job=\"hypervisor\"} == 5)",
+                  "legendFormat": "{{domain_name}}",
+                  "format": "table",
+                  "instant": true
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "none",
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Unknown",
+                          "color": "gray"
+                        },
+                        "1": {
+                          "text": "Clean shutdown",
+                          "color": "green"
+                        },
+                        "2": {
+                          "text": "Forced off",
+                          "color": "orange"
+                        },
+                        "3": {
+                          "text": "Crashed",
+                          "color": "red"
+                        },
+                        "4": {
+                          "text": "Migrated",
+                          "color": "blue"
+                        },
+                        "5": {
+                          "text": "Saved",
+                          "color": "blue"
+                        },
+                        "6": {
+                          "text": "Failed to start",
+                          "color": "red"
+                        },
+                        "7": {
+                          "text": "Off snapshot",
+                          "color": "blue"
+                        },
+                        "8": {
+                          "text": "Terminated by daemon",
+                          "color": "red"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true
+              }
+            },
+            {
+              "id": 5,
+              "title": "Host CPU busy",
+              "description": "",
+              "type": "timeseries",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 16
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "100 - cpu_usage_idle{job=\"hypervisor\",cpu=\"cpu-total\"}",
+                  "legendFormat": "{{host}}",
+                  "format": "time_series",
+                  "instant": false
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "options": {}
+            },
+            {
+              "id": 6,
+              "title": "Guest CPU cores used",
+              "description": "CPU time is reported in nanoseconds. The rate divided by 1e9 is the number of fully used CPU cores.",
+              "type": "timeseries",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 16
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "rate(libvirt_cpu_time{job=\"hypervisor\"}[5m]) / 1e9",
+                  "legendFormat": "{{domain_name}}",
+                  "format": "time_series",
+                  "instant": false
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "options": {}
+            },
+            {
+              "id": 7,
+              "title": "Guest QEMU resident memory",
+              "description": "QEMU process RSS reported by libvirt; this is not guest application memory usage. Balloon statistics depend on the guest driver and its update interval.",
+              "type": "timeseries",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 24
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "libvirt_balloon_rss{job=\"hypervisor\"} * 1024",
+                  "legendFormat": "{{domain_name}}",
+                  "format": "time_series",
+                  "instant": false
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {}
+            },
+            {
+              "id": 8,
+              "title": "Physical disk throughput",
+              "description": "",
+              "type": "timeseries",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 24
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "rate(diskio_read_bytes{job=\"hypervisor\"}[5m])",
+                  "legendFormat": "read {{name}}",
+                  "format": "time_series",
+                  "instant": false
+                },
+                {
+                  "refId": "B",
+                  "expr": "rate(diskio_write_bytes{job=\"hypervisor\"}[5m])",
+                  "legendFormat": "write {{name}}",
+                  "format": "time_series"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "Bps"
+                },
+                "overrides": []
+              },
+              "options": {}
+            },
+            {
+              "id": 9,
+              "title": "Independent host TCP probe",
+              "description": "0: Cockpit TCP endpoint or its path is unreachable; 1: reachable; 2: probe data is missing or older than the configured freshness window. This is not an out-of-band power check.",
+              "type": "stat",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "metrics"
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 32
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max(last_over_time(skeleton:host_probe:status[90s])) or vector(2)",
+                  "instant": true,
+                  "format": "time_series"
+                }
+              ],
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "none",
+                  "noValue": "Unknown",
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Endpoint/path unreachable",
+                          "color": "red"
+                        },
+                        "1": {
+                          "text": "TCP reachable",
+                          "color": "green"
+                        },
+                        "2": {
+                          "text": "Unknown; probe missing or stale",
+                          "color": "gray"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "overrides": []
+              },
+              "options": {}
+            }
+          ],
+          "templating": {
+            "list": []
+          },
+          "annotations": {
+            "list": []
+          }
+        }
+      }
+    }
+  ],
+  "json_fields": [
+    "/resources/0/data/hypervisor.json"
+  ]
+}

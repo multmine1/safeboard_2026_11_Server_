@@ -1,0 +1,68 @@
+- name: Require the declared controller working copy
+  ansible.builtin.assert:
+    that:
+      - (playbook_dir | dirname | dirname | realpath) == (reset.project_directory | realpath)
+    fail_msg: Run reset stages from the declared controller working copy holding the active state.
+
+- name: Inspect the declared local guest trust file before preparing or applying reset
+  ansible.builtin.stat:
+    path: "{{ reset.controller_known_hosts }}"
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
+  register: reset_controller_trust
+
+- name: Require a regular guest trust file when it exists
+  ansible.builtin.assert:
+    that: not reset_controller_trust.stat.exists or reset_controller_trust.stat.isreg | default(false)
+    fail_msg: The declared controller trust file must be a regular file or absent.
+
+- name: Read the generated infrastructure ownership scope
+  ansible.builtin.include_vars:
+    file: "{{ reset.paths.scope }}"
+    name: reset_scope
+
+- name: Read the native active workspace
+  ansible.builtin.command:
+    argv: [tofu, workspace, show]
+    chdir: "{{ reset.paths.tofu }}"
+  register: reset_workspace
+  changed_when: false
+
+- name: Require the declared local-state workspace
+  ansible.builtin.assert:
+    that: reset_workspace.stdout | trim == reset.workspace
+    fail_msg: Select the declared workspace before preparing or applying the reset.
+
+- name: Inspect the canonical local state file
+  ansible.builtin.stat:
+    path: "{{ reset.paths.state }}"
+  register: reset_state_file
+
+- name: Read native resource addresses when the canonical state exists
+  ansible.builtin.command:
+    argv: [tofu, state, list]
+    chdir: "{{ reset.paths.tofu }}"
+  register: reset_state_list
+  when: reset_state_file.stat.exists
+  changed_when: false
+
+- name: Retain the actual state addresses without inventing a native plan
+  ansible.builtin.set_fact:
+    reset_state_addresses: "{{ reset_state_list.stdout_lines | default([]) }}"
+
+- name: Read the provider's resolved SSH transport before a nonempty teardown
+  ansible.builtin.command:
+    argv: [ssh, -G, "{{ reset.ssh_alias }}"]
+  register: reset_transport
+  when: reset_state_addresses | length > 0
+  changed_when: false
+
+- name: Require provider access independent of guest DNS and routers
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('hostname ' ~ reset.hypervisor_address) in reset_transport.stdout_lines or
+        ('hostkeyalias ' ~ reset.hypervisor_address) in reset_transport.stdout_lines
+    fail_msg: The provider alias must identify the physical hypervisor independently of guest DNS.
+  when: reset_state_addresses | length > 0

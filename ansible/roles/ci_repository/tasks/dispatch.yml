@@ -1,0 +1,34 @@
+- name: Deliver changed configuration through the native workflow trigger
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Create a temporary public trust anchor for dispatch
+      ansible.builtin.tempfile:
+        state: file
+      register: ci_repository_dispatch_ca
+
+    - name: Bind the public CA to this request
+      ansible.builtin.copy:
+        content: "{{ vault_store.pki.ca.certificate }}"
+        dest: "{{ ci_repository_dispatch_ca.path }}"
+        mode: '0600'
+      no_log: true
+
+    - name: Dispatch the existing workflow after delivery inputs changed
+      ansible.builtin.uri:
+        url: "{{ ci_repository_api }}/actions/workflows/{{ components['admin-portal'].delivery.workflow_file }}/dispatches"
+        method: POST
+        headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+        ca_path: "{{ ci_repository_dispatch_ca.path }}"
+        body_format: json
+        body: {ref: "{{ ci_project.repository.default_branch }}"}
+        status_code: [201, 204]
+      changed_when: true
+      no_log: true
+  always:
+    - name: Remove the temporary dispatch trust anchor
+      ansible.builtin.file:
+        path: "{{ ci_repository_dispatch_ca.path }}"
+        state: absent
+      when: ci_repository_dispatch_ca.path is defined

@@ -1,0 +1,12 @@
+{% for section, options in hypervisor_unit_definition.items() %}
+[{{ section }}]
+{% for key, value in options.items() %}
+{% if value is sequence and value is not string %}
+{% for entry in value %}
+{{ key }}={{ entry }}
+{% endfor %}
+{% else %}
+{{ key }}={{ value }}
+{% endif %}
+{% endfor %}
+{% endfor %}

@@ -1,0 +1,97 @@
+- name: Apply the prepared application stacks
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../k0s/requirements/maintenance.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/deployment.json
+    - ../../configs/generated/ansible/hypervisor.json
+    - ../../configs/generated/ansible/applied.json
+  vars:
+    generated: "{{ playbook_dir }}/../../configs/generated"
+  tasks:
+    - name: Read the cluster and application deployment plans
+      ansible.builtin.include_vars:
+        file: "{{ generated }}/k0s/{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: cluster.json, name: cluster}
+        - {file: applications/deployment.json, name: application_deployment}
+
+    - name: Read the current guest and router availability
+      ansible.builtin.include_tasks: stages/runtime-vms.yml
+
+    - name: Require a running controller and its router path
+      ansible.builtin.assert:
+        that: cluster.controller in available_vms
+
+    - name: Require explicitly requested applications and their dependencies to be reachable
+      ansible.builtin.assert:
+        that:
+          - application_deployment.applications[item].enabled
+          - application_deployment.applications[item].required_vms | difference(available_vms) | length == 0
+        fail_msg: "Start the required VMs and routers before deploying {{ item }}."
+      loop: "{{ selected_applications | default([]) }}"
+
+    - name: Read the public secret plan
+      ansible.builtin.include_vars:
+        file: "{{ generated }}/k0s/secrets.json"
+        name: secret_plan
+
+    - name: Select the PKI and application sections of the shared Vault
+      ansible.builtin.set_fact:
+        pki_store: "{{ vault_store.pki }}"
+        application_secrets: "{{ vault_store.applications }}"
+      no_log: true
+
+    - name: Read the controller's encrypted administrator
+      ansible.builtin.set_fact:
+        control_secrets: "{{ {'guest_admin': vault_store.guests[cluster.controller]} }}"
+      no_log: true
+
+    - name: Publish workloads through the controller
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].control_secrets.guest_admin.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].control_secrets.guest_admin.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].control_secrets.guest_admin.sudo_password }}"
+      block:
+        - name: Prepare the native release status client
+          ansible.builtin.include_tasks: stages/helm-tool.yml
+
+        - name: Prepare the native sealing client
+          ansible.builtin.include_tasks: stages/sealing-tool.yml
+          when: secret_plan | length > 0
+
+        - name: Deploy the selected applications in dependency order
+          ansible.builtin.include_tasks: stages/application.yml
+          loop: "{{ application_deployment.order }}"
+          loop_control:
+            loop_var: application_name
+          vars:
+            application: "{{ hostvars['localhost'].application_deployment.applications[application_name] }}"
+          when:
+            - selected_applications is not defined or application_name in selected_applications
+            - application.required_vms | difference(available_vms) | length == 0
+
+        - name: Find previously published application stacks
+          ansible.builtin.find:
+            paths: "{{ cluster.settings.paths.manifest_directory }}"
+            patterns: "{{ cluster.settings.deployment.stack_prefix }}-app-*"
+            file_type: directory
+          register: application_stacks
+          when: selected_applications is not defined
+
+        - name: Remove retired applications while retaining stacks on stopped VMs
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: >-
+            {{ application_stacks.files | map(attribute='path') | difference(
+               application_deployment.applications.values() | selectattr('enabled') |
+               map(attribute='stack.directory') | list) }}
+          when: selected_applications is not defined

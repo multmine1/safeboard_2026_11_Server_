@@ -1,0 +1,61 @@
+- name: Connect the declared mailbox through native Nextcloud Mail commands
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  tasks:
+    - name: Read the generated cluster, application and account settings
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../configs/generated/k0s/{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: cluster.json, name: cluster}
+        - {file: applications/deployment.json, name: applications}
+        - {file: applications/nextcloud/mail.json, name: nextcloud_mail}
+
+    - name: Select the controller and mailbox credentials only in memory
+      ansible.builtin.set_fact:
+        nextcloud_mail_control: "{{ vault_store.guests[cluster.controller] }}"
+        nextcloud_mail_configuration: >-
+          {{ nextcloud_mail | combine({
+               'user': vault_store.applications[applications.applications.nextcloud.namespace]['nextcloud-admin'].stringData.username,
+               'password': vault_store.mail.accounts[nextcloud_mail.account_name].password}) }}
+      no_log: true
+
+    - name: Apply the account through the existing controller
+      delegate_to: "{{ cluster.controller }}"
+      become: true
+      vars:
+        ansible_user: "{{ hostvars[hostvars['localhost'].cluster.controller].access.admin_user }}"
+        ansible_private_key: "{{ hostvars['localhost'].nextcloud_mail_control.private_key }}"
+        ansible_private_key_passphrase: "{{ hostvars['localhost'].nextcloud_mail_control.key_passphrase }}"
+        ansible_become_password: "{{ hostvars['localhost'].nextcloud_mail_control.sudo_password }}"
+        nextcloud_mail_application: "{{ applications.applications.nextcloud }}"
+        nextcloud_mail_resource: "{{ (nextcloud_mail_application.readiness | selectattr('rollout', 'defined') | first).resource }}"
+      block:
+        - name: Create or update only the declared mailbox without password arguments or files
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, exec, '-i', --namespace,
+                   "{{ nextcloud_mail_application.namespace }}", "{{ nextcloud_mail_resource }}", --, php, '-r',
+                   "{{ lookup('ansible.builtin.file', '../roles/nextcloud_mail/files/configure.php')[5:] }}"]
+            stdin: "{{ nextcloud_mail_configuration | to_json }}"
+          register: nextcloud_mail_result
+          changed_when: (nextcloud_mail_result.stdout | from_json).changed
+          no_log: true
+
+        - name: Test the account with the app's native verified IMAP client
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, exec, --namespace,
+                   "{{ nextcloud_mail_application.namespace }}", "{{ nextcloud_mail_resource }}", --,
+                   php, occ, mail:account:test, "{{ (nextcloud_mail_result.stdout | from_json).account_id }}"]
+          changed_when: false
+
+        - name: Synchronize the account's folders and messages through the native Mail client
+          ansible.builtin.command:
+            argv: ["{{ cluster.settings.paths.binary }}", kubectl, exec, --namespace,
+                   "{{ nextcloud_mail_application.namespace }}", "{{ nextcloud_mail_resource }}", --,
+                   php, occ, mail:account:sync, "{{ (nextcloud_mail_result.stdout | from_json).account_id }}"]
+          changed_when: false
+          no_log: true

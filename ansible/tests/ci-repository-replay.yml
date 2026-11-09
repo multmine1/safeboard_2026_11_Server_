@@ -1,0 +1,176 @@
+- name: Replay a private Git repository from its retained Mac checkpoint
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  tasks:
+    - name: Read the compiled origins and repository policy
+      ansible.builtin.include_vars:
+        file: "{{ item.file }}"
+        name: "{{ item.name }}"
+      loop:
+        - {file: ../../configs/generated/k0s/applications/deployment.json, name: apps}
+        - {file: ../../configs/generated/ansible/local-access.json, name: local_access}
+        - {file: ../../configs/generated/k0s/applications/admin-portal/ci-project.json, name: ci_replay_project}
+
+    - name: Select an isolated repository name and the existing administrator
+      ansible.builtin.set_fact:
+        ci_replay_name: "ci-replay-test-{{ lookup('ansible.builtin.password', '/dev/null', length=12, chars=['ascii_lowercase', 'digits']) }}"
+        forgejo_admin: "{{ vault_store.applications[apps.applications.forgejo.namespace]['forgejo-admin'].stringData }}"
+        registry_admin: "{{ vault_store.applications[apps.applications.registry.namespace]['registry-admin'].stringData }}"
+      no_log: true
+
+    - name: Create the disposable local Git workspace
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ playbook_dir }}/../../environment/.tools"
+      register: ci_replay_workspace
+
+    - name: Exercise only the disposable native repository
+      delegate_to: "{{ controller.admin_alias }}"
+      vars:
+        ansible_python_interpreter: "{{ controller.python }}"
+        ci_repository_origin: "{{ apps.applications.ci.guest.registration.instance | regex_replace('/$', '') }}"
+        ci_repository_api: "{{ ci_repository_origin }}/api/v1/repos/{{ forgejo_admin.username }}/{{ ci_replay_name }}"
+        ci_repository_headers: {Authorization: "token {{ vault_store.ci.api_token }}"}
+        ci_repository_checkout: "{{ ci_replay_workspace.path }}/source"
+        ci_project: "{{ ci_replay_project | combine({'repository': ci_replay_project.repository | combine({'name': ci_replay_name})}) }}"
+        ci_replay_git_environment:
+          GIT_ASKPASS: "{{ playbook_dir }}/../../scripts/_git_askpass.py"
+          FORGEJO_GIT_USERNAME: "{{ forgejo_admin.username }}"
+          FORGEJO_GIT_TOKEN: "{{ vault_store.ci.api_token }}"
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_SSL_CAINFO: "{{ playbook_dir }}/../../configs/secrets/ca.crt"
+          https_proxy: "socks5h://{{ local_access.socks_address }}"
+          GIT_AUTHOR_NAME: Replay acceptance
+          GIT_AUTHOR_EMAIL: replay@example.invalid
+          GIT_COMMITTER_NAME: Replay acceptance
+          GIT_COMMITTER_EMAIL: replay@example.invalid
+      block:
+        - name: Create the native API's temporary public CA file
+          ansible.builtin.tempfile:
+            state: file
+          register: ci_repository_ca
+
+        - name: Trust the existing project CA
+          ansible.builtin.copy:
+            content: "{{ vault_store.pki.ca.certificate }}"
+            dest: "{{ ci_repository_ca.path }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Create the initial isolated private repository
+          ansible.builtin.include_role:
+            name: ci_repository
+            tasks_from: repository
+
+        - name: Require that this test created its own repository
+          ansible.builtin.assert:
+            that: ci_repository_created.status | default(0) == 201
+
+        - name: Remember ownership before exercising remote recreation
+          ansible.builtin.set_fact:
+            ci_replay_owned_repo: true
+
+        - name: Prepare and retain a real local Git checkpoint
+          delegate_to: localhost
+          vars:
+            ansible_python_interpreter: "{{ ansible_playbook_python }}"
+          environment: "{{ ci_replay_git_environment }}"
+          block:
+            - name: Clone only this test's initialized repository
+              ansible.builtin.git:
+                repo: "{{ ci_repository_metadata.clone_url }}"
+                dest: "{{ ci_repository_checkout }}"
+                version: "{{ ci_project.repository.default_branch }}"
+                update: false
+              no_log: true
+
+            - name: Add a checkpoint which must survive remote recreation
+              ansible.builtin.copy:
+                content: "Retained local replay checkpoint.\n"
+                dest: "{{ ci_repository_checkout }}/replay.txt"
+                mode: '0644'
+
+            - name: Stage this disposable checkpoint # noqa command-instead-of-module
+              ansible.builtin.command: git add .
+              args: {chdir: "{{ ci_repository_checkout }}"}
+              changed_when: true
+
+            - name: Commit this disposable checkpoint # noqa command-instead-of-module
+              ansible.builtin.command: git commit -m "Retain replay checkpoint"
+              args: {chdir: "{{ ci_repository_checkout }}"}
+              changed_when: true
+
+        - name: Remove only the repository created by this test
+          ansible.builtin.uri:
+            url: "{{ ci_repository_api }}"
+            method: DELETE
+            headers: "{{ ci_repository_headers }}"
+            ca_path: "{{ ci_repository_ca.path }}"
+            status_code: 204
+          changed_when: true
+          no_log: true
+
+        - name: Recreate the remote while retaining the local Git history
+          ansible.builtin.include_role:
+            name: ci_repository
+            tasks_from: repository
+
+        - name: Reuse the retained checkout with the publisher's native Git module
+          ansible.builtin.git:
+            repo: "{{ ci_repository_metadata.clone_url }}"
+            dest: "{{ ci_repository_checkout }}"
+            version: "{{ ci_project.repository.default_branch }}"
+            update: false
+          delegate_to: localhost
+          vars:
+            ansible_python_interpreter: "{{ ansible_playbook_python }}"
+          environment: "{{ ci_replay_git_environment }}"
+          no_log: true
+
+        - name: Push the retained checkpoint with the ordinary native command # noqa command-instead-of-module
+          ansible.builtin.command: git push
+          args: {chdir: "{{ ci_repository_checkout }}"}
+          delegate_to: localhost
+          vars:
+            ansible_python_interpreter: "{{ ansible_playbook_python }}"
+          environment: "{{ ci_replay_git_environment }}"
+          register: ci_replay_push
+          failed_when: false
+          changed_when: ci_replay_push.rc == 0
+          no_log: true
+
+        - name: Require replay to succeed without replacing local history or force-push
+          ansible.builtin.assert:
+            that: ci_replay_push.rc == 0
+            fail_msg: Recreated remote history prevented an ordinary push of the retained checkpoint.
+      always:
+        - name: Remove only the disposable remote owned by this test
+          ansible.builtin.uri:
+            url: "{{ ci_repository_api }}"
+            method: DELETE
+            headers: "{{ ci_repository_headers }}"
+            ca_path: "{{ ci_repository_ca.path }}"
+            status_code: [204, 404]
+          when: ci_replay_owned_repo | default(false) or ci_repository_created.status | default(0) == 201
+          register: ci_replay_removed
+          changed_when: ci_replay_removed.status == 204
+          no_log: true
+
+        - name: Remove the temporary public trust anchor
+          ansible.builtin.file:
+            path: "{{ ci_repository_ca.path }}"
+            state: absent
+          when: ci_repository_ca.path is defined
+
+        - name: Remove only the disposable local Git workspace
+          ansible.builtin.file:
+            path: "{{ ci_replay_workspace.path }}"
+            state: absent
+          delegate_to: localhost
+          vars:
+            ansible_python_interpreter: "{{ ansible_playbook_python }}"

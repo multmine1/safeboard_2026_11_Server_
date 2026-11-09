@@ -1,0 +1,24 @@
+- name: Run an explicit backup operation from the declared controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/backup.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_pipelining: true
+    ansible_become_exe: "{{ backup.hypervisor.become_exe }}"
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Require the declared controller workspace and an explicit native operation
+      ansible.builtin.assert:
+        that:
+          - (playbook_dir | dirname | dirname | realpath) == backup.project_directory
+          - backup_action | default('') in ['init', 'run', 'snapshots', 'check', 'retention-plan', 'retention', 'restore']
+          - not ansible_check_mode
+        fail_msg: Run an explicit backup action in the declared controller copy; use retention-plan to preview expiry.
+
+    - name: Run the selected operation with private runtime credentials
+      ansible.builtin.include_role:
+        name: backup

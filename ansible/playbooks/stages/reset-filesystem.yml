@@ -1,0 +1,34 @@
+- name: Read the exact C++ path inspection queries
+  ansible.builtin.command:
+    argv: ["{{ reset.paths.validator }}", reset-paths, "{{ generated }}/ansible/reset.json"]
+  register: reset_path_queries
+  changed_when: false
+
+- name: Read the hypervisor mount targets without querying the controller filesystem
+  ansible.builtin.command:
+    argv: [findmnt, --json, --list, --output, TARGET]
+  delegate_to: "{{ controller.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  register: reset_mounts
+  changed_when: false
+
+- name: Collect only the declared hypervisor path metadata without following leaf links
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
+  delegate_to: "{{ controller.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  loop: "{{ (reset_path_queries.stdout | from_json).paths }}"
+  register: reset_host_paths
+
+- name: Save the private native hypervisor filesystem observations on the controller
+  ansible.builtin.copy:
+    content: "{{ (reset_mounts.stdout | from_json) | combine({'paths': reset_host_paths.results}) | to_nice_json }}\n"
+    dest: "{{ reset.paths.filesystem }}"
+    mode: "{{ reset.file_mode }}"

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>Label</key><string>{{ browser_proxy_settings.label | e }}</string>
+    <key>ProgramArguments</key><array>
+        <string>{{ ansible_playbook_python | e }}</string>
+        <string>-m</string><string>http.server</string>
+        <string>{{ browser_proxy_settings.port }}</string>
+        <string>--bind</string><string>{{ browser_proxy_access.bind_address | e }}</string>
+        <string>--directory</string><string>{{ browser_proxy_directory | e }}</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ProcessType</key><string>Background</string>
+    <key>StandardOutPath</key><string>{{ browser_proxy_root | e }}/environment/.tools/browser-proxy.log</string>
+    <key>StandardErrorPath</key><string>{{ browser_proxy_root | e }}/environment/.tools/browser-proxy.log</string>
+</dict></plist>

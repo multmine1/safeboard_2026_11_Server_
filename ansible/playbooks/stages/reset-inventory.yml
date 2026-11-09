@@ -1,0 +1,62 @@
+- name: Inspect the physical hypervisor through its bootstrap SSH alias
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Read all existing VM names directly from hypervisor libvirt
+      ansible.builtin.command:
+        argv: [virsh, -c, "{{ reset.libvirt_uri }}", list, --all, --name]
+      become: true
+      register: reset_domains
+      changed_when: false
+
+    - name: Read all existing virtual network names
+      ansible.builtin.command:
+        argv: [virsh, -c, "{{ reset.libvirt_uri }}", net-list, --all, --name]
+      become: true
+      register: reset_networks
+      changed_when: false
+
+    - name: Read all existing libvirt pool names
+      ansible.builtin.command:
+        argv: [virsh, -c, "{{ reset.libvirt_uri }}", pool-list, --all, --name]
+      become: true
+      register: reset_pools
+      changed_when: false
+
+    - name: Refuse foreign VMs or project resources missing from the reviewed native plan
+      ansible.builtin.assert:
+        that:
+          - reset_domains.stdout_lines | reject('equalto', '') | difference(reset_preview.vm_names) | length == 0
+          - reset_networks.stdout_lines | intersect(reset_scope.network_names) | difference(reset_preview.network_names) | length == 0
+          - reset_pools.stdout_lines | intersect(reset_scope.pool_names) | difference(reset_preview.pool_names) | length == 0
+        fail_msg: Existing infrastructure is outside the saved reset plan; recover its state before resetting.
+
+    - name: Inspect the declared host pool identities without deleting their contents
+      ansible.builtin.include_tasks: reset-pool-inspect.yml
+      loop: "{{ reset.platform_pools }}"
+      loop_control:
+        loop_var: platform_pool
+      when: platform_pool.name in reset_pools.stdout_lines
+
+    - name: Inspect the declared host account identities
+      ansible.builtin.import_tasks: reset-identity.yml
+
+    - name: Read the actual bridge IPv4 addresses before changing its profile
+      ansible.builtin.command:
+        argv: [ip, -json, -4, address, show, dev, "{{ reset.network.bridge }}"]
+      register: reset_bridge_addresses
+      changed_when: false
+
+    - name: Require the physical address to remain unchanged during the reset
+      ansible.builtin.assert:
+        that:
+          - >-
+            reset.hypervisor_address in
+            ((reset_bridge_addresses.stdout | from_json | first).addr_info | map(attribute='local') | list)
+          - >-
+            (reset.hypervisor_address ~ '/' ~
+              (((reset_bridge_addresses.stdout | from_json | first).addr_info |
+               selectattr('local', 'equalto', reset.hypervisor_address) | first).prefixlen | string))
+            in reset.bootstrap_netplan.network.bridges[reset.network.bridge].addresses
+        fail_msg: The actual bridge differs from the declared physical hypervisor address.

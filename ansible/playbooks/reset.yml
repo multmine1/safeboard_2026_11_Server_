@@ -1,0 +1,63 @@
+- name: Reset only the reviewed project resources and retain the physical platform
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/reset.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  vars:
+    generated: "{{ playbook_dir }}/../../configs/generated"
+    ansible_become_exe: "{{ controller.become_exe }}"
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Inspect the canonical controller and current state
+      ansible.builtin.import_tasks: stages/reset-controller.yml
+
+    - name: Revalidate the saved plan and current host before deletion
+      ansible.builtin.import_tasks: stages/reset-inspect.yml
+
+    - name: Stop project host services and backup timers before tearing down their dependencies
+      ansible.builtin.import_tasks: stages/reset-services.yml
+
+    - name: Restore physical DNS while retaining the VM routes during teardown
+      ansible.builtin.import_tasks: stages/reset-network.yml
+      vars:
+        reset_netplan: "{{ reset.transition_netplan }}"
+      when: reset_state_addresses | length > 0
+
+    - name: Apply the same saved native plan with its built-in stale-plan protection
+      ansible.builtin.command:
+        argv: [tofu, apply, "{{ reset.paths.plan }}"]
+        chdir: "{{ reset.paths.tofu }}"
+      when: reset_state_addresses | length > 0
+      register: reset_native_teardown
+      changed_when: true
+      no_log: true
+
+    - name: Refresh filesystem boundaries after native teardown changed the host
+      when: reset_native_teardown is changed
+      block:
+        - name: Read the controller's resulting native state
+          ansible.builtin.import_tasks: stages/reset-controller.yml
+
+        - name: Reinspect the host before removing residual directories and files
+          ansible.builtin.import_tasks: stages/reset-inspect.yml
+
+    - name: Restore physical DNS and withdraw the VM routes
+      ansible.builtin.import_tasks: stages/reset-network.yml
+      vars:
+        reset_netplan: "{{ reset.bootstrap_netplan }}"
+
+    - name: Withdraw residual bootstrap routes after the persistent profile changed
+      ansible.builtin.import_tasks: stages/reset-routes.yml
+
+    - name: Remove the reviewed host overlay after the VM teardown
+      ansible.builtin.import_tasks: stages/reset-host.yml
+
+    - name: Remove only guest trust entries from the local controller
+      ansible.builtin.import_tasks: stages/reset-controller-access.yml
+
+    - name: Verify the retained physical platform and removed project resources
+      ansible.builtin.import_tasks: stages/reset-verify.yml

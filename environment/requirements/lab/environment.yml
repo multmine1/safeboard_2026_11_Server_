@@ -1,0 +1,9 @@
+name: lab
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python
+  - jupyterlab
+  - r-base
+  - r-irkernel

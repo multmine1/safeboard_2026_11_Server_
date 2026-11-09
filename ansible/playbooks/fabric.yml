@@ -1,0 +1,15 @@
+- name: Prepare the generated libvirt interface protection
+  hosts: hypervisors
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  vars:
+    ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+  tasks:
+    - name: Apply the prepared interface protection
+      ansible.builtin.import_role:
+        name: hypervisor
+        tasks_from: network_filter

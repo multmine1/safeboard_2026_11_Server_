@@ -1,0 +1,14 @@
+{
+  "id": "344e9460-48bf-5abb-9745-132485ce8c16",
+  "name": "git",
+  "type": "mirror",
+  "vcpu": 1,
+  "ram_mib": 2048,
+  "disks": [
+    {
+      "name": "os",
+      "storage": "nvme",
+      "size_gib": 16
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+- name: Read the domains currently running on this hypervisor
+  community.libvirt.virt:
+    uri: "{{ controller.local_libvirt_uri }}"
+    command: list_vms
+    state: running
+  delegate_to: "{{ ssh_alias }}"
+  register: running_domains
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+
+- name: Select guests whose prepared router path is running
+  ansible.builtin.include_tasks: available-vms.yml

@@ -1,0 +1,10 @@
+add_library(skeleton_cleanup STATIC src/boundary.cpp src/filesystem.cpp)
+target_include_directories(skeleton_cleanup PUBLIC include)
+target_link_libraries(skeleton_cleanup PUBLIC skeleton_contracts)
+
+if(BUILD_TESTING)
+    add_executable(skeleton_cleanup_tests tests/boundary_test.cpp)
+    target_include_directories(skeleton_cleanup_tests PRIVATE ../../tests/support)
+    target_link_libraries(skeleton_cleanup_tests PRIVATE skeleton_cleanup GTest::gtest_main)
+    gtest_discover_tests(skeleton_cleanup_tests)
+endif()

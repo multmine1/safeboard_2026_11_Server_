@@ -1,0 +1,51 @@
+- name: Create the declared collector directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ hypervisor_monitoring.directory_mode }}"
+  loop:
+    - "{{ hypervisor_monitoring.installation.directory }}"
+    - "{{ hypervisor_monitoring.binary | dirname }}"
+    - "{{ hypervisor_monitoring.config_path | dirname }}"
+    - "{{ hypervisor_monitoring.unit_path | dirname }}"
+
+- name: Download the pinned host collector
+  ansible.builtin.get_url:
+    url: "{{ hypervisor_monitoring.installation.url }}"
+    checksum: "{{ hypervisor_monitoring.installation.checksum }}"
+    dest: "{{ hypervisor_monitoring.installation.archive }}"
+    mode: "{{ hypervisor_monitoring.file_mode }}"
+
+- name: Extract only the declared native binary
+  ansible.builtin.unarchive:
+    src: "{{ hypervisor_monitoring.installation.archive }}"
+    dest: "{{ hypervisor_monitoring.binary | dirname }}"
+    include: ["{{ hypervisor_monitoring.installation.archive_binary }}"]
+    extra_opts: "{{ hypervisor_monitoring.installation.unarchive_options }}"
+    remote_src: true
+  register: hypervisor_monitoring_binary
+
+- name: Serialize the prepared collector configuration
+  ansible.builtin.template:
+    src: host-metrics.toml.j2
+    dest: "{{ hypervisor_monitoring.config_path }}"
+    mode: "{{ hypervisor_monitoring.file_mode }}"
+  register: hypervisor_monitoring_configuration
+
+- name: Serialize the declared collector service
+  ansible.builtin.template:
+    src: systemd-unit.j2
+    dest: "{{ hypervisor_monitoring.unit_path }}"
+    mode: "{{ hypervisor_monitoring.file_mode }}"
+  register: hypervisor_monitoring_unit
+  vars:
+    hypervisor_unit_definition: "{{ hypervisor_monitoring.systemd }}"
+
+- name: Run the host collector with its declared read-only permissions
+  ansible.builtin.systemd_service:
+    name: "{{ hypervisor_monitoring.unit }}"
+    enabled: true
+    daemon_reload: "{{ hypervisor_monitoring_unit.changed }}"
+    state: >-
+      {{ 'restarted' if hypervisor_monitoring_binary.changed or
+         hypervisor_monitoring_configuration.changed or hypervisor_monitoring_unit.changed else 'started' }}

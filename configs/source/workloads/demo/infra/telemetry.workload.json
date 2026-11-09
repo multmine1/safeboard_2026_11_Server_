@@ -1,0 +1,253 @@
+{
+  "name": "telemetry",
+  "vm": "fbbe719d-3f0f-5156-bd28-c7764158d631",
+  "enabled": true,
+  "component": "opentelemetry-collector",
+  "depends_on": [
+    "metrics",
+    "logs"
+  ],
+  "endpoints": {
+    "metrics": {
+      "connection": "metrics",
+      "scheme": "http",
+      "path": "/opentelemetry/v1/metrics"
+    },
+    "logs": {
+      "connection": "logs",
+      "scheme": "http",
+      "path": "/insert/opentelemetry/v1/logs"
+    }
+  },
+  "chart": {
+    "values": {
+      "fullnameOverride": "telemetry",
+      "mode": "deployment",
+      "image": {
+        "repository": "otel/opentelemetry-collector-contrib",
+        "tag": "0.163.2"
+      },
+      "command": {
+        "name": "otelcol-contrib"
+      },
+      "presets": {
+        "logsCollection": {
+          "enabled": true
+        },
+        "hostMetrics": {
+          "enabled": true
+        }
+      },
+      "ports": {
+        "jaeger-compact": {
+          "enabled": false
+        },
+        "jaeger-thrift": {
+          "enabled": false
+        },
+        "jaeger-grpc": {
+          "enabled": false
+        },
+        "zipkin": {
+          "enabled": false
+        }
+      },
+      "alternateConfig": {
+        "extensions": {
+          "health_check": {
+            "endpoint": "${env:MY_POD_IP}:13133"
+          }
+        },
+        "receivers": {
+          "otlp": {
+            "protocols": {
+              "grpc": {
+                "endpoint": "${env:MY_POD_IP}:4317"
+              },
+              "http": {
+                "endpoint": "${env:MY_POD_IP}:4318"
+              }
+            }
+          },
+          "prometheus": {
+            "config": {
+              "scrape_configs": [
+                {
+                  "job_name": "collector",
+                  "scrape_interval": "30s",
+                  "static_configs": [
+                    {
+                      "targets": [
+                        "${env:MY_POD_IP}:8888"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "tcp_check/host_probe": {
+            "collection_interval": "30s",
+            "targets": [
+              {
+                "dialer": {
+                  "timeout": "3s"
+                }
+              }
+            ]
+          }
+        },
+        "processors": {
+          "batch": {},
+          "memory_limiter": {
+            "check_interval": "5s",
+            "limit_percentage": 75,
+            "spike_limit_percentage": 15
+          },
+          "transform/host_probe": {
+            "metric_statements": [
+              {
+                "context": "metric",
+                "statements": [
+                  "set(name, \"skeleton_host_probe_success\") where name == \"tcpcheck.status\"",
+                  "set(unit, \"\") where name == \"skeleton_host_probe_success\""
+                ]
+              }
+            ]
+          }
+        },
+        "exporters": {
+          "otlphttp/metrics": {},
+          "otlphttp/logs": {}
+        },
+        "service": {
+          "extensions": [
+            "health_check"
+          ],
+          "telemetry": {
+            "metrics": {
+              "readers": [
+                {
+                  "pull": {
+                    "exporter": {
+                      "prometheus": {
+                        "host": "${env:MY_POD_IP}",
+                        "port": 8888
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "pipelines": {
+            "metrics": {
+              "receivers": [
+                "otlp",
+                "prometheus"
+              ],
+              "processors": [
+                "memory_limiter",
+                "batch"
+              ],
+              "exporters": [
+                "otlphttp/metrics"
+              ]
+            },
+            "logs": {
+              "receivers": [
+                "otlp"
+              ],
+              "processors": [
+                "memory_limiter",
+                "batch"
+              ],
+              "exporters": [
+                "otlphttp/logs"
+              ]
+            },
+            "metrics/host_probe": {
+              "receivers": [
+                "tcp_check/host_probe"
+              ],
+              "processors": [
+                "memory_limiter",
+                "transform/host_probe",
+                "batch"
+              ],
+              "exporters": [
+                "otlphttp/metrics"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/node_selector",
+      "path": "/chart/values/nodeSelector"
+    },
+    {
+      "op": "copy",
+      "from": "/context/pod_labels",
+      "path": "/chart/values/podLabels"
+    },
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/chart/values/podAnnotations"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/metrics",
+      "path": "/chart/values/alternateConfig/exporters/otlphttp~1metrics/metrics_endpoint"
+    },
+    {
+      "op": "copy",
+      "from": "/context/endpoints/logs",
+      "path": "/chart/values/alternateConfig/exporters/otlphttp~1logs/logs_endpoint"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/replicas",
+      "path": "/chart/values/replicaCount"
+    },
+    {
+      "op": "copy",
+      "from": "/context/compute/main/containers/main",
+      "path": "/chart/values/resources"
+    },
+    {
+      "op": "copy",
+      "from": "/context/connections/cockpit/socket",
+      "path": "/chart/values/alternateConfig/receivers/tcp_check~1host_probe/targets/0/endpoint"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "deployment/telemetry",
+      "rollout": true,
+      "revision_path": "{.spec.template.metadata.annotations.skeleton\\.config-hash}"
+    }
+  ],
+  "compute": {
+    "main": {
+      "containers": {
+        "main": {
+          "requests": {
+            "cpu_millicores": 50,
+            "ram_mib": 64
+          },
+          "limits": {
+            "cpu_millicores": 500,
+            "ram_mib": 256
+          }
+        }
+      },
+      "replicas": 1
+    }
+  }
+}

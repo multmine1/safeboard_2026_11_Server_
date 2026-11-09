@@ -1,0 +1,24 @@
+- name: Read the existing pool definition through the native libvirt module
+  community.libvirt.virt_pool:
+    uri: "{{ reset.libvirt_uri }}"
+    name: "{{ platform_pool.name }}"
+    command: get_xml
+  become: true
+  register: reset_pool_definition
+
+- name: Read the pool type and target with the native XML module
+  community.general.xml:
+    xmlstring: "{{ reset_pool_definition.get_xml }}"
+    xpath: "{{ item.xpath }}"
+    content: "{{ item.content }}"
+  loop:
+    - {xpath: /pool, content: attribute}
+    - {xpath: /pool/target/path, content: text}
+  register: reset_pool_fields
+
+- name: Require the declared directory pool before removing its libvirt definition
+  ansible.builtin.assert:
+    that:
+      - reset_pool_fields.results[0].matches[0].pool.type == 'dir'
+      - reset_pool_fields.results[1].matches[0].path == platform_pool.path
+    fail_msg: The native host pool differs from the declared directory pool; reset is refused.

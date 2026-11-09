@@ -1,0 +1,10 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "default",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../environment/.tools/build/cpp"
+    }
+  ]
+}

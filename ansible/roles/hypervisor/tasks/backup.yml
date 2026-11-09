@@ -1,0 +1,25 @@
+- name: Validate the shared repository boundary before configuring its native writer
+  ansible.builtin.import_role:
+    name: backup
+    tasks_from: guards
+  vars:
+    backup_action: configure
+
+- name: Prepare the shared repository identity and permissions before its writer
+  ansible.builtin.import_tasks: backup-repository.yml
+
+- name: Install the pinned native backup tool
+  ansible.builtin.import_tasks: backup-install.yml
+
+- name: Install prepared guest freeze units before enabling host jobs
+  ansible.builtin.include_tasks: backup-guest-units.yml
+  loop: "{{ backup.guest_quiesce_units | default({}) | dict2items }}"
+  loop_control:
+    loop_var: hypervisor_backup_guest_units
+    label: "{{ hypervisor_backup_guest_units.key }}"
+
+- name: Prepare only encrypted native service credentials and pinned host identities
+  ansible.builtin.import_tasks: backup-credentials.yml
+
+- name: Apply the prepared dependency units and timer
+  ansible.builtin.import_tasks: backup-units.yml

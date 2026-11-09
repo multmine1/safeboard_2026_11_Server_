@@ -1,0 +1,47 @@
+- name: Create only a bystander directory and a redirected fixture path
+  delegate_to: "{{ controller.admin_alias }}"
+  vars:
+    ansible_python_interpreter: "{{ controller.python }}"
+  block:
+    - name: Create a directory whose permissions must remain unchanged
+      ansible.builtin.file:
+        path: "{{ reset_test_host.path }}/bystander"
+        state: directory
+        mode: '0700'
+
+    - name: Redirect only a fixture backup path to the bystander
+      ansible.builtin.file:
+        src: "{{ reset_test_host.path }}/bystander"
+        dest: "{{ reset_test_host.path }}/redirected"
+        state: link
+
+- name: Select only the redirected fixture for the permission preflight
+  ansible.builtin.set_fact:
+    reset:
+      backup_repository_access:
+        parents: ["{{ reset_test_host.path }}/bystander"]
+        repository: "{{ reset_test_host.path }}/redirected"
+    reset_test_redirect_rejected: false
+
+- name: Read actual metadata for the redirected fixture
+  ansible.builtin.import_tasks: reset-host-observe.yml
+
+- name: Require rejection before permission changes can follow the link
+  block:
+    - name: Run the production backup permission preflight on the real link
+      ansible.builtin.include_tasks: ../playbooks/stages/reset-backup-inspect.yml
+  rescue:
+    - name: Require the failure to describe the forbidden permission target
+      ansible.builtin.assert:
+        that: >-
+          ansible_failed_result.results | selectattr('failed', 'defined') |
+          selectattr('failed') | map(attribute='msg') | unique | list ==
+          ['Backup permission targets must be directories or absent before teardown.']
+
+    - name: Retain the observed rejection
+      ansible.builtin.set_fact:
+        reset_test_redirect_rejected: true
+
+- name: Require the redirected permission target to have been rejected
+  ansible.builtin.assert:
+    that: reset_test_redirect_rejected

@@ -1,0 +1,103 @@
+- name: Install and hold the native archive prerequisite
+  ansible.builtin.import_tasks: packages.yml
+  vars:
+    hypervisor_managed_packages: "{{ backup_packages }}"
+
+- name: Keep unused NFSv3 RPC listeners disabled on the NFSv4 backup client
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ backup_disabled_services }}"
+
+- name: Create root-owned private backup directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ '0750' if item == hypervisor_backup.capture_directory else '0700' }}"
+  loop:
+    - "{{ hypervisor_backup.capture_directory }}"
+    - "{{ hypervisor_backup.credential_directory }}"
+    - "{{ hypervisor_backup.installation_directory }}"
+    - "{{ hypervisor_backup.known_hosts | dirname }}"
+
+- name: Allow the repository account to read completed captures without replacing their paths
+  ansible.posix.acl:
+    path: "{{ hypervisor_backup.capture_directory }}"
+    etype: user
+    entity: "{{ hypervisor_backup.repository_user }}"
+    permissions: rx
+    state: present
+
+- name: Revoke the former transport account's direct access to host captures
+  ansible.posix.acl:
+    path: "{{ hypervisor_backup.capture_directory }}"
+    etype: user
+    entity: "{{ backup.repository_access.transport_user }}"
+    state: absent
+
+- name: Create the native writer's private cache
+  ansible.builtin.file:
+    path: "{{ hypervisor_backup.cache_directory }}"
+    state: directory
+    owner: "{{ hypervisor_backup.repository_user }}"
+    mode: '0700'
+
+- name: Transfer only the private backup cache entries to the declared writer
+  ansible.builtin.file:
+    path: "{{ hypervisor_backup.cache_directory }}"
+    owner: "{{ hypervisor_backup.repository_user }}"
+    group: "{{ backup.repository_access.group }}"
+    recurse: true
+    follow: false
+
+- name: Prepare only empty directories for private NFS namespaces
+  when: hypervisor_backup.nfs is defined
+  block:
+    - name: Allow the backup reader to traverse its empty mount root
+      ansible.builtin.file:
+        path: "{{ hypervisor_backup.nfs.directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0711'
+
+    - name: Create the prepared private mount targets without global mounts or fstab entries
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop: "{{ hypervisor_backup.nfs.mount_directories }}"
+
+- name: Download the verified official Restic artifact
+  ansible.builtin.get_url:
+    url: "{{ hypervisor_backup.installation.url }}"
+    checksum: "{{ hypervisor_backup.installation.checksum }}"
+    dest: "{{ hypervisor_backup.installation.archive }}"
+    mode: '0600'
+  register: hypervisor_backup_archive
+
+- name: Inspect the existing extracted artifact
+  ansible.builtin.stat:
+    path: "{{ hypervisor_backup.installation.extracted }}"
+    get_checksum: false
+  register: hypervisor_backup_extracted
+
+- name: Extract only the pinned native executable
+  ansible.builtin.command:
+    argv: [bunzip2, --keep, --force, "{{ hypervisor_backup.installation.archive }}"]
+  when: hypervisor_backup_archive.changed or not hypervisor_backup_extracted.stat.exists
+  changed_when: true
+
+- name: Install the native executable independently of the Mac environment
+  ansible.builtin.copy:
+    src: "{{ hypervisor_backup.installation.extracted }}"
+    dest: "{{ hypervisor_backup.binary }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0755'

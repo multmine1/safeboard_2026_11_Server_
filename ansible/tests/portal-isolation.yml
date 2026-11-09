@@ -1,0 +1,71 @@
+- name: Accept the portal's private network boundary
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+    - ../../configs/generated/ansible/hypervisor.json
+  vars:
+    portal_root: "{{ playbook_dir | dirname | dirname }}"
+    portal_bootstrap: "{{ lookup('ansible.builtin.file', portal_root ~ '/configs/generated/ansible/hypervisor-bootstrap.json') | from_json }}"
+    portal_proxy: "{{ portal_bootstrap.hypervisor_socket_proxies | selectattr('name', 'equalto', 'admin') | first }}"
+    apps: "{{ lookup('ansible.builtin.file', portal_root ~ '/configs/generated/k0s/applications/deployment.json') | from_json }}"
+    access_plan: "{{ lookup('ansible.builtin.file', portal_root ~ '/configs/generated/ansible/local-access.json') | from_json }}"
+    delivery: "{{ lookup('ansible.builtin.file', portal_root ~ '/configs/generated/k0s/applications/admin-portal/delivery-values.json') | from_json }}"
+    portal_frontend_connection: >-
+      {{ '%s:%s:%s:%s' | format(access_plan.forwards.admin.remote_name,
+         access_plan.forwards.admin.remote_port, access_plan.forwards['https-cloud'].remote_host,
+         access_plan.forwards['https-cloud'].remote_port) }}
+    unrelated_vm: "{{ apps.applications.portfolio.vm }}"
+  tasks:
+    - name: Require the private backend to remain closed to an unrelated public VM
+      ansible.builtin.wait_for:
+        host: "{{ delivery.service.externalIPs[0] }}"
+        port: "{{ delivery.service.port }}"
+        state: stopped
+        timeout: 5
+        connect_timeout: 1
+      delegate_to: "{{ unrelated_vm }}"
+      vars:
+        ansible_user: "{{ hostvars[unrelated_vm].access.admin_user }}"
+        ansible_private_key: "{{ vault_store.guests[unrelated_vm].private_key }}"
+        ansible_private_key_passphrase: "{{ vault_store.guests[unrelated_vm].key_passphrase }}"
+      changed_when: false
+
+    - name: Read the native hypervisor socket binding
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ portal_proxy.socket_unit }}", -p, Listen, --value]
+      delegate_to: "{{ controller.admin_alias }}"
+      register: portal_native_binding
+      changed_when: false
+
+    - name: Require the portal socket to remain on hypervisor loopback
+      ansible.builtin.assert:
+        that: portal_native_binding.stdout == portal_proxy.socket.Socket.ListenStream ~ ' (Stream)'
+
+    - name: Require the public frontend to serve its declared cloud endpoint
+      ansible.builtin.command:
+        argv: [curl, --socks5-hostname, "{{ access_plan.socks_address }}", --cacert,
+               "{{ portal_root }}/configs/secrets/ca.crt", --max-time, '10', --output, /dev/null,
+               --write-out, '%{http_code}', "{{ access_plan.forwards['https-cloud'].remote_url }}"]
+      register: portal_public_control
+      failed_when: portal_public_control.rc != 0 or portal_public_control.stdout not in ['200', '302', '303']
+      changed_when: false
+
+    - name: Require the public frontend to reject the private portal identity
+      ansible.builtin.command:
+        argv: [curl, --socks5-hostname, "{{ access_plan.socks_address }}", --cacert,
+               "{{ portal_root }}/configs/secrets/ca.crt", --max-time, '10', --connect-to,
+               "{{ portal_frontend_connection }}",
+               --output, /dev/null, --write-out, '%{http_code}', "{{ access_plan.forwards.admin.remote_url }}"]
+      register: portal_public_denial
+      failed_when: portal_public_denial.rc not in [35, 60] and portal_public_denial.stdout not in ['400', '403', '404', '421']
+      changed_when: false
+
+    - name: Report the accepted boundary without exposing credentials
+      ansible.builtin.debug:
+        msg:
+          binding: "{{ portal_native_binding.stdout }}"
+          unrelated_public_vm: backend-unreachable
+          public_frontend: "{{ {'curl_status': portal_public_denial.rc, 'http_status': portal_public_denial.stdout} }}"

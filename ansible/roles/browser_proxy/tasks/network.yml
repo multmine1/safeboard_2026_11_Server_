@@ -1,0 +1,38 @@
+- name: Read this network service's automatic proxy settings
+  ansible.builtin.command:
+    argv: [networksetup, -getautoproxyurl, "{{ browser_proxy_network }}"]
+  register: browser_proxy_current
+  changed_when: false
+
+- name: Preserve an existing external automatic proxy
+  ansible.builtin.fail:
+    msg: "{{ browser_proxy_network }} already uses another automatic proxy; choose its configuration manually."
+  when:
+    - browser_proxy_state == 'present'
+    - "'Enabled: Yes' in browser_proxy_current.stdout_lines"
+    - "('URL: ' ~ browser_proxy_settings.url) not in browser_proxy_current.stdout_lines"
+
+- name: Set the generated PAC URL
+  ansible.builtin.command:
+    argv: [networksetup, -setautoproxyurl, "{{ browser_proxy_network }}", "{{ browser_proxy_settings.url }}"]
+  changed_when: true
+  when:
+    - browser_proxy_state == 'present'
+    - "('URL: ' ~ browser_proxy_settings.url) not in browser_proxy_current.stdout_lines"
+
+- name: Enable selective proxy access
+  ansible.builtin.command:
+    argv: [networksetup, -setautoproxystate, "{{ browser_proxy_network }}", 'on']
+  changed_when: true
+  when:
+    - browser_proxy_state == 'present'
+    - "'Enabled: Yes' not in browser_proxy_current.stdout_lines"
+
+- name: Disable this project's automatic proxy
+  ansible.builtin.command:
+    argv: [networksetup, -setautoproxystate, "{{ browser_proxy_network }}", 'off']
+  changed_when: true
+  when:
+    - browser_proxy_state == 'absent'
+    - "('URL: ' ~ browser_proxy_settings.url) in browser_proxy_current.stdout_lines"
+    - "'Enabled: Yes' in browser_proxy_current.stdout_lines"

@@ -1,0 +1,18 @@
+map $ssl_server_name $portal_tls_directory { default /etc/portal/tls; }
+
+server {
+    listen ${PORTAL_HTTPS_PORT} ssl;
+    server_name _;
+    ssl_certificate $portal_tls_directory/tls.crt;
+    ssl_certificate_key $portal_tls_directory/tls.key;
+    ssl_certificate_cache max=2;
+    root /usr/share/nginx/html;
+    auth_basic "Private infrastructure";
+    auth_basic_user_file /etc/portal/auth/htpasswd;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+    location = /healthz { auth_basic off; return 200 "ok\n"; }
+    location = /links.json { alias /etc/portal/navigation/links.json; add_header Cache-Control no-store; }
+    location / { try_files $uri $uri/ =404; }
+}

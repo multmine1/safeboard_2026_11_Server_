@@ -1,0 +1,60 @@
+- name: Check an uninitialized directory for unrelated files
+  ansible.builtin.find:
+    paths: "{{ backup.repository }}"
+    hidden: true
+    file_type: any
+  register: backup_existing_files
+  delegate_to: "{{ backup.hypervisor.admin_alias }}"
+  become: true
+  vars:
+    ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+  when: backup_action == 'init' and not backup_repository_config.stat.exists
+
+- name: Refuse initialization over unrelated data
+  ansible.builtin.assert:
+    that: backup_existing_files.matched == 0
+    fail_msg: The declared repository directory must be empty before its first initialization.
+  when: backup_action == 'init' and not backup_repository_config.stat.exists
+
+- name: Initialize only a new repository with its declared password
+  ansible.builtin.command:
+    argv: "{{ backup.init_argv }}"
+    stdin: "{{ vault_store.backup.repository_password }}"
+  when: backup_action == 'init' and not backup_repository_config.stat.exists
+  changed_when: true
+  no_log: true
+
+- name: Verify access to the initialized repository
+  ansible.builtin.command:
+    argv: "{{ backup.snapshots_argv }}"
+    stdin: "{{ vault_store.backup.repository_password }}"
+  when: backup_action == 'init'
+  changed_when: false
+  no_log: true
+
+- name: Check prepared local state files before creating any snapshots
+  ansible.builtin.import_tasks: state.yml
+  when: backup_action == 'run'
+
+- name: Capture each prepared set
+  ansible.builtin.include_tasks: set.yml
+  loop: "{{ backup.sets | dict2items }}"
+  loop_control:
+    loop_var: backup_set
+    label: "{{ backup_set.key }}"
+  when: backup_action == 'run'
+
+- name: Run the prepared inspection or retention command
+  ansible.builtin.command:
+    argv: "{{ {'snapshots': backup.snapshots_argv, 'check': backup.check_argv,
+               'retention-plan': backup.retention_plan_argv, 'retention': backup.retention_argv}[backup_action] }}"
+    stdin: "{{ vault_store.backup.repository_password }}"
+  when: backup_action in ['snapshots', 'check', 'retention-plan', 'retention']
+  register: backup_inspection
+  changed_when: backup_action == 'retention'
+  no_log: true
+
+- name: Show the native snapshot list or maintenance result
+  ansible.builtin.debug:
+    var: backup_inspection.stdout_lines
+  when: backup_action in ['snapshots', 'check', 'retention-plan', 'retention']

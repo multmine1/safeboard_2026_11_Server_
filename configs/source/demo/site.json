@@ -1,0 +1,941 @@
+{
+  "hypervisor": {
+    "file": "../hypervisor/policy.json"
+  },
+  "image": {
+    "url": "https://cloud.debian.org/images/cloud/trixie/20261103-2651/debian-13-genericcloud-amd64-20261103-2651.qcow2",
+    "checksum": "sha512:d25999de0770d4cde1be72c299ba3ad94eac7ea8fd4d18f8cc86c69df69337e2e8a91d64465a9bfd8f2a78c566fcbcb0842eacc91c09efdef72d719d9f13b535",
+    "format": "qcow2",
+    "pool": "nvme",
+    "prepare_ram_mib": 2048,
+    "prepare_retries": 3,
+    "prepare_retry_delay_seconds": 30,
+    "packages": [
+      "cloud-init",
+      "python3",
+      "sudo",
+      "openssh-server",
+      "netplan.io",
+      "systemd-resolved",
+      "qemu-guest-agent",
+      "nftables",
+      "ca-certificates"
+    ],
+    "apt_sources": "Types: deb\nURIs: https://snapshot.debian.org/archive/debian/20261103T000000Z\nSuites: trixie trixie-updates\nComponents: main contrib non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\nCheck-Valid-Until: no\n\nTypes: deb\nURIs: https://snapshot.debian.org/archive/debian-security/20261103T000000Z\nSuites: trixie-security\nComponents: main contrib non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\nCheck-Valid-Until: no\n",
+    "prepare_command": "systemctl enable systemd-networkd systemd-resolved ssh qemu-guest-agent",
+    "sysprep_operations": [
+      "machine-id",
+      "ssh-hostkeys"
+    ],
+    "apt_config": {
+      "path": "/etc/apt/apt.conf.d/99-infrastructure",
+      "content": "Acquire::Retries \"0\";\n"
+    }
+  },
+  "provider": {
+    "source": "dmacvicar/libvirt",
+    "version": "0.9.9",
+    "lock_file": "../../../tofu/requirements/libvirt.lock.hcl"
+  },
+  "defaults": {
+    "hostdev": {
+      "managed": true
+    },
+    "volume_lifecycle": {
+      "ignore_changes": [
+        "create"
+      ]
+    },
+    "cloud_init_lifecycle": {
+      "ignore_changes": [
+        "network_config"
+      ]
+    },
+    "domain_lifecycle": {
+      "ignore_changes": [
+        "running"
+      ]
+    },
+    "network": {
+      "autostart": true,
+      "port_options": {
+        "isolated": "yes"
+      }
+    },
+    "domain": {
+      "type": "kvm",
+      "memory_unit": "MiB",
+      "autostart": false,
+      "running": true,
+      "cpu": {
+        "mode": "host-passthrough"
+      },
+      "os": {
+        "type": "hvm",
+        "type_arch": "x86_64",
+        "type_machine": "q35",
+        "boot_devices": [
+          {
+            "dev": "hd"
+          }
+        ]
+      },
+      "features": {
+        "acpi": true,
+        "apic": {}
+      },
+      "devices": {
+        "videos": [
+          {
+            "model": {
+              "type": "vga"
+            }
+          }
+        ]
+      }
+    },
+    "nic": {
+      "model": {
+        "type": "virtio"
+      },
+      "filter_ref": {
+        "filter": "skeleton-l2"
+      }
+    },
+    "disk": {
+      "device": "disk",
+      "driver": {
+        "name": "qemu"
+      },
+      "target": {
+        "bus": "virtio"
+      }
+    },
+    "volume": {
+      "capacity_unit": "bytes",
+      "target": {
+        "format": {
+          "type": "qcow2"
+        }
+      }
+    },
+    "pool": {
+      "type": "dir",
+      "create": {
+        "build": true,
+        "start": true,
+        "autostart": true
+      }
+    },
+    "seed_disk": {
+      "device": "cdrom",
+      "driver": {
+        "name": "qemu",
+        "type": "raw"
+      },
+      "target": {
+        "dev": "sda",
+        "bus": "sata"
+      },
+      "read_only": true
+    },
+    "cloud_init": {
+      "disable_root": false,
+      "ssh_pwauth": false
+    },
+    "cloud_init_user": {
+      "lock_passwd": true
+    }
+  },
+  "services": {
+    "network": {
+      "path": "/etc/netplan/60-infrastructure.yaml",
+      "renderer": "networkd",
+      "interfaces": {
+        "lan": "lan0",
+        "wan": "wan0"
+      },
+      "mode": "0600",
+      "remove_files": [
+        "/etc/netplan/50-cloud-init.yaml"
+      ]
+    },
+    "ssh": {
+      "gateway": "hypervisor",
+      "port": 22,
+      "unit": "ssh",
+      "config_path": "/etc/ssh/sshd_config.d/60-infrastructure.conf",
+      "bootstrap_user": "root",
+      "admin_user": "admin",
+      "bootstrap_options": {
+        "PasswordAuthentication": "no",
+        "KbdInteractiveAuthentication": "no",
+        "PubkeyAuthentication": "yes",
+        "PermitRootLogin": "prohibit-password"
+      },
+      "admin_options": {
+        "PasswordAuthentication": "no",
+        "KbdInteractiveAuthentication": "no",
+        "PubkeyAuthentication": "yes",
+        "PermitRootLogin": "no"
+      },
+      "client_args": "-o IdentityAgent=SSH_AUTH_SOCK -o StrictHostKeyChecking=accept-new",
+      "admin_settings": {
+        "groups": [
+          "sudo"
+        ],
+        "shell": "/bin/bash"
+      },
+      "transport": "ssh"
+    },
+    "dns": {
+      "port": 53,
+      "unit": "coredns",
+      "corefile_path": "/etc/coredns/Corefile",
+      "zones_directory": "/etc/coredns/zones",
+      "ttl": 60,
+      "soa_refresh": 3600,
+      "soa_retry": 600,
+      "soa_expire": 86400,
+      "soa_minimum": 60,
+      "files": {
+        "/etc/systemd/system/coredns.service": "[Unit]\nAfter=network-online.target\nWants=network-online.target\n[Service]\nExecStart=/usr/local/bin/coredns -conf /etc/coredns/Corefile\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n"
+      },
+      "binary": {
+        "url": "https://github.com/coredns/coredns/releases/download/v1.15.0/coredns_1.15.0_linux_amd64.tgz",
+        "checksum": "sha256:2495c5b8f3fab6d0a336c397f1227b75406d86e6ec7125744a29df9e936ab8cd",
+        "cache": "/var/cache/skeleton/coredns-1.15.0.tgz",
+        "directory": "/usr/local/bin",
+        "include": [
+          "coredns"
+        ]
+      }
+    },
+    "firewall": {
+      "packages": [
+        "nftables"
+      ],
+      "path": "/etc/nftables.conf",
+      "table": "infrastructure",
+      "unit": "nftables",
+      "policy": {
+        "input": "drop",
+        "forward": "drop",
+        "output": "drop"
+      },
+      "internet_exclusions": [
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "224.0.0.0/4",
+        "240.0.0.0/4"
+      ],
+      "inter_network_snat": false,
+      "common_allow": [
+        {
+          "to": "internet",
+          "protocol": "tcp",
+          "ports": [
+            80,
+            443
+          ]
+        },
+        {
+          "to": "internet",
+          "protocol": "udp",
+          "ports": [
+            123
+          ]
+        }
+      ],
+      "validate": "nft -c -f %s"
+    },
+    "guest_sysctl": {
+      "net.ipv6.conf.all.disable_ipv6": 1,
+      "net.ipv6.conf.default.disable_ipv6": 1,
+      "net.ipv4.conf.all.accept_redirects": 0,
+      "net.ipv4.conf.default.accept_redirects": 0
+    },
+    "router_sysctl": {
+      "net.ipv4.ip_forward": 1,
+      "net.ipv4.conf.all.send_redirects": 0,
+      "net.ipv4.conf.default.send_redirects": 0
+    },
+    "router_interface_sysctl": {
+      "send_redirects": 0
+    },
+    "router_packages": [
+      "ansible"
+    ],
+    "dns_resolver": {
+      "path": "/etc/resolv.conf",
+      "local_address": "127.0.0.1",
+      "disable_units": [
+        "systemd-resolved"
+      ]
+    },
+    "storage": {
+      "mount_root": "/srv",
+      "fstype": "ext4",
+      "opts": "defaults"
+    },
+    "guest": {
+      "file_mode": "0644",
+      "directory_mode": "0755",
+      "sysctl_file": "/etc/sysctl.d/60-infrastructure.conf",
+      "disable_services": [
+        "apt-daily.timer",
+        "apt-daily-upgrade.timer"
+      ],
+      "files": {
+        "/etc/apt/apt.conf.d/20auto-upgrades": "APT::Periodic::Update-Package-Lists \"0\";\nAPT::Periodic::Unattended-Upgrade \"0\";\n",
+        "/etc/systemd/system/nftables.service.d/60-preserve-tables.conf": "[Service]\nExecStop=\n"
+      },
+      "python": "/usr/bin/python3",
+      "binary_mode": "0755",
+      "package_files": {
+        "/etc/apt/sources.list.d/00-current.sources": "Types: deb\nURIs: https://deb.debian.org/debian\nSuites: trixie trixie-updates\nComponents: main contrib non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: https://deb.debian.org/debian-security\nSuites: trixie-security\nComponents: main contrib non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n",
+        "/etc/apt/preferences.d/99-snapshot": "Package: *\nPin: origin \"snapshot.debian.org\"\nPin-Priority: 500\n\nPackage: *\nPin: origin \"deb.debian.org\"\nPin-Priority: -1\n"
+      }
+    },
+    "kubernetes": {
+      "pod_prefix": 26,
+      "asn_pool": {
+        "first": 64512,
+        "last": 65534
+      },
+      "pod_nat_outgoing": true,
+      "bgp": {
+        "port": 179,
+        "sourceAddress": "None",
+        "nextHopMode": "Self"
+      },
+      "ports": {
+        "kubelet": 10250
+      },
+      "config": {
+        "apiVersion": "k0s.k0sproject.io/v1beta1",
+        "kind": "ClusterConfig",
+        "metadata": {
+          "name": "demo"
+        },
+        "spec": {
+          "api": {
+            "port": 6443
+          },
+          "metricsServer": {
+            "patches": [
+              {
+                "target": {
+                  "kind": "Deployment",
+                  "name": "metrics-server",
+                  "namespace": "kube-system"
+                },
+                "patch": {
+                  "type": "StrategicMergePatch",
+                  "content": "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"skeleton.role\":\"controller\"}}}}}"
+                }
+              }
+            ]
+          },
+          "network": {
+            "provider": "calico",
+            "podCIDR": "10.244.0.0/16",
+            "serviceCIDR": "10.96.0.0/12",
+            "clusterDomain": "cluster.local",
+            "calico": {
+              "mode": "bird",
+              "overlay": "Never",
+              "ipAutodetectionMethod": "kubernetes-internal-ip",
+              "envVars": {
+                "NO_DEFAULT_POOLS": "true",
+                "CALICO_IPV4POOL_CIDR": ""
+              }
+            },
+            "kubeProxy": {
+              "patches": [
+                {
+                  "target": {
+                    "kind": "DaemonSet",
+                    "name": "kube-proxy",
+                    "namespace": "kube-system"
+                  },
+                  "patch": {
+                    "type": "StrategicMergePatch",
+                    "content": "{\"spec\":{\"template\":{\"spec\":{\"affinity\":{\"nodeAffinity\":{\"requiredDuringSchedulingIgnoredDuringExecution\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"skeleton.role\",\"operator\":\"NotIn\",\"values\":[\"router\"]}]}]}}}}}}}"
+                  }
+                }
+              ]
+            }
+          },
+          "images": {
+            "calico": {
+              "cni": {
+                "image": "quay.io/k0sproject/calico-cni",
+                "version": "v3.32.2-1"
+              },
+              "node": {
+                "image": "quay.io/k0sproject/calico-node",
+                "version": "v3.32.2-1"
+              },
+              "kubecontrollers": {
+                "image": "quay.io/k0sproject/calico-kube-controllers",
+                "version": "v3.32.2-1"
+              }
+            }
+          }
+        }
+      },
+      "router_taint": {
+        "key": "skeleton.router",
+        "value": "true",
+        "effect": "NoSchedule"
+      },
+      "paths": {
+        "binary": "/usr/local/bin/k0s",
+        "config": "/etc/k0s/k0s.json",
+        "join_token": "/etc/k0s/worker.token",
+        "unit_directory": "/etc/systemd/system",
+        "install_record": "/etc/k0s/install.json",
+        "manifest_directory": "/var/lib/k0s/manifests",
+        "chart_directory": "/var/lib/k0s/charts",
+        "data_directory": "/var/lib/k0s"
+      },
+      "controller_args": [
+        "--enable-worker",
+        "--no-taints",
+        "--disable-components=coredns,konnectivity-server"
+      ],
+      "worker_args": [],
+      "services": {
+        "controller": "k0scontroller",
+        "worker": "k0sworker"
+      },
+      "binary": {
+        "url": "https://github.com/k0sproject/k0s/releases/download/v1.37.2%2Bk0s.0/k0s-v1.37.2%2Bk0s.0-amd64",
+        "checksum": "sha256:19ab68793419c8d66be258f3c00969d39fd4493d5e2b2557c84d77cfe88f0f70"
+      },
+      "router_runtime": {
+        "init_image": "docker.io/library/debian@sha256:1e1a22175fbf1b32157ddaf0219e1db4e5401fab2b94ed285add64d18587cd2d",
+        "dns_image": "docker.io/coredns/coredns@sha256:3429e3bbffb1e839470c4a3541d4d78aca84a1394c75a539d0200c58c63196ac",
+        "pull_policy": "IfNotPresent",
+        "namespace": "skeleton-routers",
+        "service_account": "router-dns",
+        "namespace_labels": {
+          "pod-security.kubernetes.io/enforce": "privileged"
+        },
+        "state_directory": "/var/lib/skeleton/router",
+        "apply_playbook": "/var/lib/skeleton/router/apply.yml",
+        "payload_mount": "/payload",
+        "state_mount": "/host-state",
+        "shared_namespaces": [
+          "default"
+        ],
+        "health_port": 8080,
+        "ready_port": 8181,
+        "probe_settings": {
+          "periodSeconds": 3,
+          "timeoutSeconds": 2,
+          "failureThreshold": 10
+        },
+        "resources": {
+          "requests": {
+            "cpu": "100m",
+            "memory": "64Mi"
+          },
+          "limits": {
+            "cpu": "500m",
+            "memory": "128Mi"
+          }
+        },
+        "init_resources": {
+          "requests": {
+            "cpu": "100m",
+            "memory": "256Mi"
+          },
+          "limits": {
+            "cpu": "1",
+            "memory": "768Mi"
+          }
+        },
+        "init_security": {
+          "privileged": true,
+          "runAsUser": 0
+        },
+        "dns_security": {
+          "runAsUser": 65532,
+          "runAsGroup": 65532,
+          "allowPrivilegeEscalation": false,
+          "readOnlyRootFilesystem": true,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ],
+            "add": [
+              "NET_BIND_SERVICE"
+            ]
+          }
+        },
+        "copy_security": {
+          "runAsUser": 0,
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          }
+        }
+      },
+      "pod_interface_glob": "cali*",
+      "ipam": {
+        "strictAffinity": true,
+        "maxBlocksPerHost": 1,
+        "autoAllocateBlocks": true
+      },
+      "kubelet": {
+        "maxPods": 32
+      },
+      "deployment": {
+        "stack_prefix": "skeleton",
+        "directory_mode": "0755",
+        "file_mode": "0644",
+        "private_file_mode": "0600",
+        "binary_mode": "0755",
+        "readiness_timeout": "180s",
+        "api_retries": 90,
+        "api_delay": 2,
+        "token_expiry": "10m",
+        "system_rollouts": [
+          {
+            "namespace": "kube-system",
+            "resource": "daemonset/calico-node",
+            "pod_selector": "k8s-app=calico-node",
+            "node_roles": [
+              "controller",
+              "worker",
+              "router"
+            ]
+          },
+          {
+            "namespace": "kube-system",
+            "resource": "deployment/calico-kube-controllers"
+          },
+          {
+            "namespace": "kube-system",
+            "resource": "deployment/metrics-server"
+          },
+          {
+            "namespace": "kube-system",
+            "resource": "daemonset/kube-proxy",
+            "pod_selector": "k8s-app=kube-proxy",
+            "node_roles": [
+              "controller",
+              "worker"
+            ]
+          }
+        ],
+        "retired_stack_directories": [
+          "/var/lib/k0s/manifests/konnectivity"
+        ]
+      },
+      "pki": {
+        "sealing_application": "sealed-secrets",
+        "controller_name": "sealed-secrets",
+        "public_ca_file": "configs/secrets/ca.crt",
+        "kubeconfig": "/var/lib/k0s/pki/admin.conf",
+        "ca": {
+          "key_type": "RSA",
+          "key_size": 4096,
+          "valid_for": "+3650d"
+        },
+        "certificate": {
+          "key_type": "RSA",
+          "key_size": 3072,
+          "valid_for": "+365d",
+          "renew_before": "+30d"
+        },
+        "kubeseal": {
+          "url": "https://github.com/bitnami/sealed-secrets/releases/download/v0.41.2/kubeseal-0.41.2-linux-amd64.tar.gz",
+          "checksum": "sha256:666b5db6788ad1dedb56e2d97064e1cc3779aa77bbd6f4b56b62beeb1941ed79",
+          "archive": "/var/cache/kubeseal-0.41.2-linux-amd64.tar.gz",
+          "directory": "/usr/local/bin",
+          "binary": "/usr/local/bin/kubeseal"
+        }
+      },
+      "registry": {
+        "service": "7372c6e1-72d3-56ac-b458-365de247d0fd",
+        "directory": "/etc/k0s/containerd.d/certs.d",
+        "dropin": "/etc/k0s/containerd.d/registry.toml",
+        "docker_directory": "/etc/docker/certs.d",
+        "ca_filename": "ca.crt"
+      }
+    },
+    "workloads": {
+      "directory": "../workloads/demo"
+    },
+    "local_access": {
+      "bind_address": "127.0.0.1",
+      "services": [
+        {
+          "service": "f7596def-7438-553b-8005-d3a64d9f4bfb",
+          "scheme": "https",
+          "path": "/"
+        },
+        {
+          "service": "7ba1b3f6-f664-5491-a974-482f666eb8c9",
+          "scheme": "http",
+          "path": "/vmui/"
+        },
+        {
+          "service": "36f49c6e-305a-59a7-b3b8-7d7c9774651f",
+          "scheme": "http",
+          "path": "/select/vmui/"
+        },
+        {
+          "service": "dcec5614-e259-576b-aca6-f7ea19b3de3f",
+          "scheme": "http",
+          "path": "/"
+        },
+        {
+          "service": "7372c6e1-72d3-56ac-b458-365de247d0fd",
+          "scheme": "https",
+          "path": "/"
+        },
+        {
+          "service": "cf69f40e-520f-5d54-ab2d-7712b5d081f9",
+          "scheme": "https",
+          "path": "/"
+        },
+        {
+          "service": "b4237d69-7154-589e-a6a6-75a353945cc0",
+          "scheme": "https",
+          "local_port": 9443,
+          "path": "/",
+          "alias": "portfolio"
+        },
+        {
+          "service": "b4237d69-7154-589e-a6a6-75a353945cc0",
+          "scheme": "https",
+          "local_port": 9444,
+          "path": "/",
+          "alias": "cloud"
+        },
+        {
+          "service": "cddda1de-2270-5ed9-8dad-d8c37d25911c",
+          "scheme": "https",
+          "path": "/admin"
+        },
+        {
+          "service": "baf00787-336b-504d-8faa-be188deac174",
+          "scheme": "smtp",
+          "path": "/"
+        },
+        {
+          "service": "3c76cb46-42c9-5f7c-9f1a-ba6abd6a8f3d",
+          "scheme": "smtps",
+          "path": "/"
+        },
+        {
+          "service": "3a9aba38-0f0e-5d9b-a265-2699c695d153",
+          "scheme": "imaps",
+          "path": "/"
+        }
+      ],
+      "socks_port": 1080,
+      "browser_proxy": {
+        "port": 1081,
+        "label": "com.skeleton.browser-proxy"
+      }
+    },
+    "reset": {
+      "backup_repository": "remove",
+      "directory": "environment/.tools/reset",
+      "tofu_directory": "configs/generated/tofu",
+      "validator": "environment/.tools/build/cpp/config-generator",
+      "directory_mode": "0700",
+      "file_mode": "0600",
+      "files": {
+        "plan": "destroy.tfplan",
+        "filesystem": "filesystem.json",
+        "preview": "preview.json",
+        "snapshot": "tofu.json"
+      },
+      "state_file": "terraform.tfstate",
+      "workspace": "default",
+      "session_retries": 10,
+      "session_delay_seconds": 1,
+      "retired": {
+        "units": [
+          "/etc/systemd/system/skeleton-backup.service",
+          "/etc/systemd/system/skeleton-backup.timer"
+        ],
+        "files": [
+          "/etc/skeleton/backup/vault-password.cred"
+        ]
+      },
+      "operation_lock_file": "/run/lock/skeleton-maintenance.lock"
+    },
+    "workload_capacity": {
+      "non_application_reserve": {
+        "cpu_millicores": 500,
+        "ram_mib": 768
+      },
+      "permit_limit_overcommit": true,
+      "vm_reserves": {
+        "fa226c98-5672-5491-99c1-1442558cf103": {
+          "ram_mib": 2048
+        }
+      }
+    },
+    "backup": {
+      "quiesce": [
+        "nextcloud",
+        "stalwart"
+      ],
+      "storage": "hd",
+      "repository_directory": "backups/skeleton",
+      "bin_directory": "environment/.tools/anaconda/envs/skeleton/bin",
+      "cache_directory": "environment/.tools/backup/cache",
+      "restore_directory": "environment/.tools/backup/restore",
+      "password_length": 64,
+      "retention": {
+        "daily": 7,
+        "weekly": 4,
+        "monthly": 6
+      },
+      "sets": [
+        {
+          "name": "project",
+          "kind": "files",
+          "paths": [
+            "."
+          ],
+          "excludes": [
+            ".git",
+            "environment/.tools",
+            "configs/generated",
+            "archive",
+            "temp",
+            ".development",
+            "ansible/.cache"
+          ]
+        },
+        {
+          "name": "tofu-state",
+          "kind": "tofu-state"
+        },
+        {
+          "name": "k0s",
+          "kind": "k0s",
+          "max_size_mib": 1024
+        },
+        {
+          "name": "postgres-infra",
+          "kind": "postgresql",
+          "workload": "postgres-infra",
+          "max_size_mib": 4096
+        },
+        {
+          "name": "postgres-public",
+          "kind": "postgresql",
+          "workload": "postgres-public",
+          "max_size_mib": 4096
+        },
+        {
+          "name": "nextcloud-files",
+          "kind": "nfs",
+          "workload": "nfs-public",
+          "export": "nextcloud"
+        },
+        {
+          "name": "mail-files",
+          "kind": "nfs",
+          "workload": "stalwart",
+          "export": "messages"
+        }
+      ],
+      "capture": {
+        "guest_directory": "/var/tmp",
+        "local_directory": "environment/.tools/backup-capture",
+        "reserve_mib": 2048
+      },
+      "host": {
+        "name": "skeleton-data-backup",
+        "binary": "/usr/local/bin/restic",
+        "unit_directory": "/etc/systemd/system",
+        "capture_directory": "/var/cache/skeleton-backup-capture",
+        "cache_directory": "/var/cache/skeleton-backup-restic",
+        "installation_directory": "/var/cache/skeleton-backup-installation",
+        "credential_directory": "/etc/skeleton-backup/credentials",
+        "known_hosts": "/etc/skeleton-backup/known_hosts",
+        "host_key_file": "/etc/ssh/ssh_host_ed25519_key.pub",
+        "tmpfiles_path": "/etc/tmpfiles.d/skeleton-maintenance.conf",
+        "credential_key": "host",
+        "service_options": {
+          "TimeoutStartSec": 3600,
+          "UMask": "0077",
+          "MemoryMax": "512M"
+        },
+        "ssh_options": {
+          "BatchMode": "yes",
+          "StrictHostKeyChecking": "yes",
+          "IdentitiesOnly": "yes",
+          "IdentityAgent": "none",
+          "ConnectTimeout": 15
+        },
+        "timer": {
+          "Timer": {
+            "OnCalendar": "daily",
+            "Persistent": true,
+            "RandomizedDelaySec": 300
+          },
+          "Install": {
+            "WantedBy": "timers.target"
+          }
+        },
+        "nfs": {
+          "directory": "/var/cache/skeleton-backup-nfs",
+          "options": "ro,nosuid,nodev,noexec,vers=4.2,proto=tcp,soft,timeo=50,retrans=2,retry=0"
+        },
+        "account": {
+          "shell": "/usr/sbin/nologin",
+          "file_mode": "0440",
+          "directory_mode": "2770"
+        }
+      },
+      "filesystem_watchdog": {
+        "OnActiveSec": 300,
+        "AccuracySec": 1
+      }
+    }
+  },
+  "profiles": {
+    "router": {
+      "packages": [],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "data": {
+      "packages": [
+        "nfs-kernel-server"
+      ],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "forgejo": {
+      "packages": [
+        "nfs-common"
+      ],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "observability": {
+      "packages": [],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "controller": {
+      "packages": [],
+      "kubernetes": {
+        "role": "controller"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "worker": {
+      "packages": [
+        "nfs-common"
+      ],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "edge": {
+      "packages": [],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "mirror": {
+      "packages": [
+        "nfs-common"
+      ],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "ci": {
+      "packages": [
+        "docker.io",
+        "docker-compose",
+        "docker-buildx",
+        "git"
+      ],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    },
+    "gpu": {
+      "packages": [],
+      "kubernetes": {
+        "role": "standalone"
+      }
+    },
+    "mail": {
+      "packages": [
+        "nfs-kernel-server"
+      ],
+      "kubernetes": {
+        "role": "worker"
+      },
+      "sysctl": {
+        "net.ipv4.ip_forward": 1
+      }
+    }
+  },
+  "assets": {
+    "router_apply": "../../../ansible/playbooks/router-local.yml",
+    "network_tasks": "../../../ansible/roles/network/tasks/main.yml",
+    "firewall_tasks": "../../../ansible/roles/network/tasks/firewall.yml",
+    "ufw_tasks": "../../../ansible/roles/network/tasks/ufw.yml",
+    "dns_rbac": "../../../k0s/requirements/router-rbac.json",
+    "components": "../../../k0s/requirements/components.json",
+    "host_monitoring": "../../../ansible/requirements/monitoring.json",
+    "host_packages": "../../../ansible/requirements/ubuntu-26.04.json",
+    "monitoring_alerts": "../../../k0s/assets/monitoring/alerts.json",
+    "host_backup": "../../../ansible/requirements/backup.json"
+  },
+  "instance_file": "../instance.json"
+}

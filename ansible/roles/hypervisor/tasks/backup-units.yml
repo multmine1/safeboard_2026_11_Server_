@@ -1,0 +1,36 @@
+- name: Persist the shared maintenance lock across boot
+  ansible.builtin.copy:
+    content: "{{ hypervisor_backup.tmpfiles_content }}"
+    dest: "{{ hypervisor_backup.tmpfiles_path }}"
+    mode: '0644'
+  register: hypervisor_backup_tmpfiles
+
+- name: Create the native lock without truncating an existing locked inode
+  ansible.builtin.command:
+    argv: [systemd-tmpfiles, --create, "{{ hypervisor_backup.tmpfiles_path }}"]
+  changed_when: hypervisor_backup_tmpfiles.changed
+
+- name: Serialize only the compiled native units
+  ansible.builtin.template:
+    src: systemd-unit.j2
+    dest: "{{ hypervisor_backup.unit_directory }}/{{ item.key }}"
+    mode: '0644'
+  vars:
+    hypervisor_unit_definition: "{{ item.value }}"
+  loop: "{{ hypervisor_backup.units | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: hypervisor_backup_units
+
+- name: Validate the generated service graph with systemd
+  ansible.builtin.command:
+    argv: "{{ ['systemd-analyze', 'verify'] + hypervisor_backup.units.keys() | map('regex_replace', '^', hypervisor_backup.unit_directory ~ '/') | list }}"
+  changed_when: false
+  when: hypervisor_backup_units.changed
+
+- name: Enable only the declared timer after all credentials and units are ready
+  ansible.builtin.systemd_service:
+    name: "{{ hypervisor_backup.timer_unit }}"
+    enabled: true
+    state: started
+    daemon_reload: "{{ hypervisor_backup_units.changed }}"

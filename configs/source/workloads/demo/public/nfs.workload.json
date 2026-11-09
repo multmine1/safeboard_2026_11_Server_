@@ -1,0 +1,76 @@
+{
+  "name": "nfs-public",
+  "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+  "enabled": true,
+  "storage": {
+    "nfs_exports": [
+      {
+        "service": "public-data",
+        "mount": "data",
+        "directory": "portfolio",
+        "clients": [
+          "344e9460-48bf-5abb-9745-132485ce8c16"
+        ],
+        "options": "rw,sync,root_squash,no_subtree_check",
+        "owner": "1000",
+        "group": "1000",
+        "mode": "2770",
+        "name": "portfolio"
+      },
+      {
+        "service": "public-data",
+        "mount": "cloud",
+        "directory": "nextcloud",
+        "clients": [
+          "51ca2996-3113-5182-84d3-56bc448f55a8"
+        ],
+        "options": "rw,sync,root_squash,anonuid=33,anongid=33,no_subtree_check",
+        "owner": "33",
+        "group": "33",
+        "mode": "2770",
+        "name": "nextcloud",
+        "hypervisor_access": {
+          "service": "public-backup-data",
+          "options": "ro,sync,all_squash,anonuid=33,anongid=33,no_subtree_check"
+        }
+      }
+    ]
+  },
+  "guest": {
+    "directories": [
+      {
+        "path": "/etc/nfs.conf.d",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755"
+      },
+      {
+        "path": "/etc/exports.d",
+        "owner": "root",
+        "group": "root",
+        "mode": "0755"
+      }
+    ],
+    "nfs": {
+      "exports_path": "/etc/exports.d/skeleton.exports",
+      "file_mode": "0644"
+    },
+    "files": [
+      {
+        "path": "/etc/nfs.conf.d/skeleton.conf",
+        "mode": "0644",
+        "content": "[nfsd]\nvers3=n\nvers4=y\nudp=n\ntcp=y\n"
+      }
+    ],
+    "services": [
+      "nfs-server"
+    ]
+  },
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/storage/nfs_exports",
+      "path": "/guest/nfs_exports"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+- name: Read the operating system identity before applying host requirements
+  ansible.builtin.setup:
+    gather_subset: distribution
+  when: ansible_facts.distribution is not defined or ansible_facts.distribution_major_version is not defined
+
+- name: Require the operating system selected in the generated host requirements
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == hypervisor_platform.distribution
+      - ansible_facts.distribution_major_version == hypervisor_platform.major_version
+    fail_msg: The running OS differs from the source-selected host requirements. Select the correct requirements and regenerate before applying.

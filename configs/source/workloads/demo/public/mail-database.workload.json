@@ -1,0 +1,41 @@
+{
+  "name": "stalwart-db",
+  "vm": "bd787b7e-1a25-5e01-aea6-333b3935a2ca",
+  "enabled": true,
+  "depends_on": [
+    "postgres-public"
+  ],
+  "resources": [
+    {
+      "apiVersion": "postgresql.cnpg.io/v1",
+      "kind": "Database",
+      "metadata": {
+        "name": "stalwart",
+        "annotations": {}
+      },
+      "spec": {
+        "name": "stalwart",
+        "owner": "stalwart",
+        "cluster": {
+          "name": "postgres-public"
+        },
+        "databaseReclaimPolicy": "retain"
+      }
+    }
+  ],
+  "patches": [
+    {
+      "op": "copy",
+      "from": "/context/revision_annotations",
+      "path": "/resources/0/metadata/annotations"
+    }
+  ],
+  "readiness": [
+    {
+      "resource": "database.postgresql.cnpg.io/stalwart",
+      "revision_path": "{.metadata.annotations.skeleton\\.config-hash}",
+      "generation_path": "{.status.observedGeneration}",
+      "wait_for": "jsonpath={.status.applied}=true"
+    }
+  ]
+}

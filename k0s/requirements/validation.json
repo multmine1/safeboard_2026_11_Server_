@@ -1,0 +1,28 @@
+{
+  "vmalert_tool": {
+    "archive_binary": "vmalert-tool-prod",
+    "cache_directory": "environment/.tools/validation/vmalert-1.155.0",
+    "unittest_file": "k0s/tests/monitoring.yml",
+    "directory_mode": "0755",
+    "file_mode": "0644",
+    "platforms": {
+      "Linux": {
+        "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.155.0/vmutils-linux-amd64-v1.155.0.tar.gz",
+        "checksum": "sha256:b6181fc16cf19835706ea5d67215eea56c1fe87350fdfd82a5ff803ea2c1a907",
+        "archive_name": "vmutils-linux-amd64-v1.155.0.tar.gz"
+      },
+      "Darwin": {
+        "url": "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.155.0/vmutils-darwin-arm64-v1.155.0.tar.gz",
+        "checksum": "sha256:30c316c0bfb840962a8b878a451acf6dcdae50294543b3a829d54ca0bb6674e1",
+        "archive_name": "vmutils-darwin-arm64-v1.155.0.tar.gz"
+      }
+    }
+  },
+  "gitleaks_macos": {
+    "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+    "checksum": "sha256:b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+    "cache_directory": "environment/.tools/validation/gitleaks-8.30.1-darwin-arm64",
+    "archive_name": "gitleaks_8.30.1_darwin_arm64.tar.gz",
+    "archive_binary": "gitleaks"
+  }
+}

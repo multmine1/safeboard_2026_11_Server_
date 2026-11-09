@@ -1,0 +1,107 @@
+- name: Exercise only the read-only PCI class and isolation boundaries
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Allocate a private directory without touching host configuration
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: skeleton-pci-proof-
+      register: pci_fixture_directory
+
+    - name: Exercise actual observations on this disposable filesystem
+      block:
+        - name: Create only fixture device and group directories
+          ansible.builtin.file:
+            path: "{{ pci_fixture_directory.path }}/{{ item }}"
+            state: directory
+            mode: '0700'
+          loop: [device, group, group/devices]
+
+        - name: Populate harmless firmware and class observations
+          ansible.builtin.copy:
+            content: "{{ item.content }}"
+            dest: "{{ pci_fixture_directory.path }}/{{ item.path }}"
+            mode: '0600'
+          loop:
+            - {path: DMAR, content: 'fixture firmware table'}
+            - {path: device/class, content: '0x030000'}
+
+        - name: Create only the fixture isolation group links
+          ansible.builtin.file:
+            src: "{{ pci_fixture_directory.path }}/{{ item.source }}"
+            dest: "{{ pci_fixture_directory.path }}/{{ item.destination }}"
+            state: link
+          loop:
+            - {source: group, destination: device/iommu_group}
+            - {source: device, destination: group/devices/0000:0a:00.0}
+
+        - name: Bind only the fixture's prepared observation plan
+          ansible.builtin.set_fact:
+            hypervisor_pci:
+              firmware_table: "{{ pci_fixture_directory.path }}/DMAR"
+              allowed_classes: ['0x030000']
+              devices:
+                - name: accelerator
+                  class_path: "{{ pci_fixture_directory.path }}/device/class"
+                  iommu_link: "{{ pci_fixture_directory.path }}/device/iommu_group"
+                  allowed_group_members: ['0000:0a:00.0']
+
+        - name: Accept the fixture's own device class and isolation group
+          ansible.builtin.include_role:
+            name: hypervisor
+            tasks_from: pci
+
+        - name: Add an unexpected group member only inside the fixture
+          ansible.builtin.file:
+            src: "{{ pci_fixture_directory.path }}/device"
+            dest: "{{ pci_fixture_directory.path }}/group/devices/0000:0b:00.0"
+            state: link
+
+        - name: Require rejection of the crossed fixture boundary
+          block:
+            - name: Verify the deliberately crossed group
+              ansible.builtin.include_role:
+                name: hypervisor
+                tasks_from: pci
+          rescue:
+            - name: Require the expected isolation boundary rejection
+              ansible.builtin.assert:
+                that: "'IOMMU group crosses' in ansible_failed_result.results[0].msg"
+            - name: Record the expected fixture rejection
+              ansible.builtin.set_fact:
+                pci_fixture_group_rejected: true
+
+        - name: Require the undeclared group member to have been rejected
+          ansible.builtin.assert:
+            that: pci_fixture_group_rejected | default(false)
+
+        - name: Replace only the disposable class observation with a forbidden NIC class
+          ansible.builtin.copy:
+            content: '0x020000'
+            dest: "{{ pci_fixture_directory.path }}/device/class"
+            mode: '0600'
+
+        - name: Require rejection of a network adapter before group verification
+          block:
+            - name: Inspect only the forbidden fixture class
+              ansible.builtin.include_role:
+                name: hypervisor
+                tasks_from: pci
+          rescue:
+            - name: Require the expected class policy rejection
+              ansible.builtin.assert:
+                that: "'forbidden hardware class' in ansible_failed_result.results[0].msg"
+            - name: Record the expected NIC rejection
+              ansible.builtin.set_fact:
+                pci_fixture_class_rejected: true
+
+        - name: Require the forbidden class to have been rejected
+          ansible.builtin.assert:
+            that: pci_fixture_class_rejected | default(false)
+
+      always:
+        - name: Remove only this private proof directory
+          ansible.builtin.file:
+            path: "{{ pci_fixture_directory.path }}"
+            state: absent

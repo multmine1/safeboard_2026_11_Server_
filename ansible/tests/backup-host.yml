@@ -1,0 +1,74 @@
+- name: Accept the real native host backup transaction
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../../configs/generated/ansible/backup.json
+    - ../../configs/source/vault.json
+    - "../../{{ vault_file }}"
+  vars:
+    ansible_pipelining: true
+  tasks:
+    - name: Require an explicit live backup acceptance
+      ansible.builtin.assert:
+        that: not ansible_check_mode
+        fail_msg: This acceptance starts the prepared backup job and applies its declared retention policy.
+
+    - name: Require applications to be available before backup
+      ansible.builtin.include_tasks: backup-maintenance.yml
+      loop: "{{ backup.quiesce | default([]) }}"
+      loop_control:
+        loop_var: backup_quiesce
+
+    - name: Exercise the prepared native units on the physical hypervisor
+      delegate_to: "{{ backup.hypervisor.admin_alias }}"
+      become: true
+      vars:
+        ansible_python_interpreter: "{{ backup.hypervisor.python }}"
+        ansible_become_exe: "{{ backup.hypervisor.become_exe }}"
+        ansible_become_password: "{{ vault_store.hypervisor_sudo_password }}"
+      block:
+        - name: Run one complete scheduled transaction now
+          ansible.builtin.command:
+            argv: [systemctl, start, --wait, "{{ backup.host.gate_unit }}"]
+          changed_when: true
+
+        - name: Inspect the final native unit states and results
+          ansible.builtin.command:
+            argv: "{{ ['systemctl', 'show', '--property=Id,ActiveState,Result'] + backup.host.units.keys() | list }}"
+          changed_when: false
+          register: backup_native_states
+
+        - name: Require every started unit to have succeeded
+          ansible.builtin.assert:
+            that:
+              - "'Result=exit-code' not in backup_native_states.stdout"
+              - "'Result=signal' not in backup_native_states.stdout"
+              - "'ActiveState=failed' not in backup_native_states.stdout"
+
+        - name: Read only the completed integrity and retention log
+          ansible.builtin.command:
+            argv: [journalctl, --no-pager, --unit, "{{ backup.host.name }}-verify.service", -n, '28']
+          changed_when: false
+          register: backup_native_log
+
+        - name: Show the native integrity result
+          ansible.builtin.debug:
+            var: backup_native_log.stdout_lines
+
+        - name: Inspect the declared capture directory after completion
+          ansible.builtin.find:
+            paths: "{{ backup.host.capture_directory }}"
+            file_type: any
+            hidden: true
+          register: backup_native_remaining
+
+        - name: Require completed plaintext captures to have been removed
+          ansible.builtin.assert:
+            that: backup_native_remaining.matched == 0
+
+    - name: Require applications to be available again after backup
+      ansible.builtin.include_tasks: backup-maintenance.yml
+      loop: "{{ backup.quiesce | default([]) }}"
+      loop_control:
+        loop_var: backup_quiesce
